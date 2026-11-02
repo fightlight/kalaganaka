@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/tracking-core", "crates/desktop"]
+default-members = ["crates/desktop"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+iced = { version = "0.14", features = ["canvas", "tokio"] }
+mundy = { version = "0.2", default-features = false, features = ["async-io", "color-scheme"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+directories = "6"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

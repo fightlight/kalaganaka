@@ -1,0 +1,263 @@
+use chrono::{Local, NaiveDate, Utc};
+use iced::{Element, Subscription, Task, window};
+use tracking_core::Snapshot;
+
+use crate::{
+    settings::{Settings, ThemePreference},
+    storage::{self, Command, Data},
+    ui,
+};
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    Stored(Result<Data, String>),
+    Tick,
+    Toggle,
+    SelectTask(tracking_core::Task),
+    TaskName(String),
+    AddTask,
+    ChangeView(ViewMode),
+    Navigate(i64),
+    Today,
+    OpenStatistics,
+    OpenSettings,
+    SetTheme(ThemePreference),
+    SystemThemeChanged(iced::theme::Mode),
+    WindowOpened,
+    CloseRequested(window::Id),
+    ConfirmQuit,
+    CancelQuit,
+    Retry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    Day,
+    Week,
+}
+
+pub struct App {
+    pub snapshot: Snapshot,
+    pub settings: Settings,
+    pub selected: Option<tracking_core::Task>,
+    pub new_task_name: String,
+    pub date: NaiveDate,
+    pub mode: ViewMode,
+    pub now: chrono::DateTime<Local>,
+    pub busy: bool,
+    pub loaded: bool,
+    pub error: Option<String>,
+    pub confirm_quit: bool,
+    pub recovered_session: bool,
+    main_window: window::Id,
+    statistics_window: Option<window::Id>,
+    settings_window: Option<window::Id>,
+    system_theme: iced::theme::Mode,
+    adding_task: bool,
+    quitting: bool,
+}
+
+impl App {
+    pub fn new() -> (Self, Task<Message>) {
+        let (main_window, open) = window::open(window::Settings {
+            size: iced::Size::new(1050.0, 800.0),
+            exit_on_close_request: false,
+            ..Default::default()
+        });
+        (
+            Self {
+                snapshot: Snapshot::default(),
+                settings: Settings::default(),
+                selected: None,
+                new_task_name: String::new(),
+                date: Local::now().date_naive(),
+                mode: ViewMode::Day,
+                now: Local::now(),
+                busy: true,
+                loaded: false,
+                error: None,
+                confirm_quit: false,
+                recovered_session: false,
+                main_window,
+                statistics_window: None,
+                settings_window: None,
+                system_theme: iced::theme::Mode::None,
+                adding_task: false,
+                quitting: false,
+            },
+            Task::batch([
+                open.map(|_| Message::WindowOpened),
+                Task::perform(storage::execute(Command::Load), Message::Stored),
+            ]),
+        )
+    }
+
+    pub fn title(&self, id: window::Id) -> String {
+        if Some(id) == self.statistics_window {
+            "Kalaganaka — Statistics".into()
+        } else if Some(id) == self.settings_window {
+            "Kalaganaka — Settings".into()
+        } else {
+            "Kalaganaka".into()
+        }
+    }
+
+    pub fn theme(&self, _id: window::Id) -> iced::Theme {
+        self.settings.theme.theme(self.system_theme)
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        Subscription::batch([
+            iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick),
+            window::close_requests().map(Message::CloseRequested),
+            crate::platform::appearance::changes().map(Message::SystemThemeChanged),
+        ])
+    }
+
+    fn store(&mut self, command: Command) -> Task<Message> {
+        self.busy = true;
+        self.adding_task = matches!(&command, Command::AddTask(_));
+        self.error = None;
+        Task::perform(storage::execute(command), Message::Stored)
+    }
+
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::Stored(result) => {
+                self.busy = false;
+                match result {
+                    Ok(Data { snapshot, settings }) => {
+                        self.settings = settings;
+                        self.recovered_session = !self.loaded && snapshot.active.is_some();
+                        self.loaded = true;
+                        self.selected = snapshot
+                            .active
+                            .as_ref()
+                            .and_then(|active| {
+                                snapshot.tasks.iter().find(|task| task.id == active.task_id)
+                            })
+                            .or_else(|| {
+                                self.selected.as_ref().and_then(|selected| {
+                                    snapshot.tasks.iter().find(|task| task.id == selected.id)
+                                })
+                            })
+                            .or_else(|| snapshot.tasks.last())
+                            .cloned();
+                        self.snapshot = snapshot;
+                        if self.adding_task {
+                            self.new_task_name.clear();
+                        }
+                        if self.quitting {
+                            return iced::exit();
+                        }
+                    }
+                    Err(error) => {
+                        self.error = Some(error);
+                        self.quitting = false;
+                    }
+                }
+            }
+            Message::Tick => self.now = Local::now(),
+            Message::SystemThemeChanged(mode) => self.system_theme = mode,
+            Message::Toggle if self.ready() => {
+                self.recovered_session = false;
+                if self.snapshot.active.is_some() {
+                    return self.store(Command::Pause(Utc::now()));
+                }
+                if let Some(task) = &self.selected {
+                    return self.store(Command::Start(task.id, Utc::now()));
+                }
+            }
+            Message::SelectTask(task) if self.ready() => {
+                if self.snapshot.active.is_some() {
+                    return self.store(Command::Start(task.id, Utc::now()));
+                }
+                self.selected = Some(task);
+            }
+            Message::TaskName(name) => self.new_task_name = name,
+            Message::AddTask if self.ready() => {
+                return self.store(Command::AddTask(self.new_task_name.clone()));
+            }
+            Message::ChangeView(mode) => self.mode = mode,
+            Message::Navigate(direction) => {
+                let days = if self.mode == ViewMode::Day { 1 } else { 7 };
+                if let Some(date) = self
+                    .date
+                    .checked_add_signed(chrono::Duration::days(direction * days))
+                {
+                    self.date = date;
+                }
+            }
+            Message::Today => self.date = Local::now().date_naive(),
+            Message::OpenStatistics => {
+                if let Some(id) = self.statistics_window {
+                    return window::gain_focus(id);
+                }
+                let (id, open) = window::open(window::Settings {
+                    size: iced::Size::new(540.0, 580.0),
+                    exit_on_close_request: false,
+                    ..Default::default()
+                });
+                self.statistics_window = Some(id);
+                return open.map(|_| Message::WindowOpened);
+            }
+            Message::OpenSettings => {
+                if let Some(id) = self.settings_window {
+                    return window::gain_focus(id);
+                }
+                let (id, open) = window::open(window::Settings {
+                    size: iced::Size::new(440.0, 320.0),
+                    exit_on_close_request: false,
+                    ..Default::default()
+                });
+                self.settings_window = Some(id);
+                return open.map(|_| Message::WindowOpened);
+            }
+            Message::SetTheme(theme) if self.ready() && theme != self.settings.theme => {
+                return self.store(Command::SetTheme(theme));
+            }
+            Message::CloseRequested(id) => {
+                if id == self.main_window {
+                    if self.busy {
+                        self.error =
+                            Some("Please wait for storage to finish before closing.".into());
+                    } else if self.snapshot.active.is_some() {
+                        self.confirm_quit = true;
+                    } else {
+                        return iced::exit();
+                    }
+                } else {
+                    if Some(id) == self.statistics_window {
+                        self.statistics_window = None;
+                    }
+                    if Some(id) == self.settings_window {
+                        self.settings_window = None;
+                    }
+                    return window::close(id);
+                }
+            }
+            Message::ConfirmQuit if self.ready() => {
+                self.quitting = true;
+                return self.store(Command::Pause(Utc::now()));
+            }
+            Message::CancelQuit => self.confirm_quit = false,
+            Message::Retry if !self.busy => return self.store(Command::Load),
+            _ => {}
+        }
+        Task::none()
+    }
+
+    pub fn ready(&self) -> bool {
+        self.loaded && !self.busy
+    }
+
+    pub fn view(&self, id: window::Id) -> Element<'_, Message> {
+        if Some(id) == self.statistics_window {
+            ui::statistics_window::view(self)
+        } else if Some(id) == self.settings_window {
+            ui::settings_window::view(self)
+        } else {
+            ui::main_window::view(self)
+        }
+    }
+}

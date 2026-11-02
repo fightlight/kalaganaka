@@ -1,0 +1,90 @@
+use super::{
+    calendar,
+    icons::{self, Icon},
+    task_selector,
+};
+use crate::app::{App, Message, ViewMode};
+use iced::{
+    Element, Fill,
+    widget::{button, column, container, row, space, text, tooltip},
+};
+
+pub fn view(app: &App) -> Element<'_, Message> {
+    let toolbar = row![
+        button("‹").on_press(Message::Navigate(-1)),
+        button("Today").on_press(Message::Today),
+        button("›").on_press(Message::Navigate(1)),
+        text(app.date.format("%d %B %Y").to_string()),
+        button("Day").on_press(Message::ChangeView(ViewMode::Day)),
+        button("Week").on_press(Message::ChangeView(ViewMode::Week)),
+        space().width(Fill),
+        tooltip(
+            button(icons::view(Icon::Statistics, 24.0))
+                .padding(10)
+                .style(button::text)
+                .on_press(Message::OpenStatistics),
+            "Statistics",
+            tooltip::Position::Bottom,
+        ),
+        tooltip(
+            button(icons::view(Icon::Settings, 24.0))
+                .padding(10)
+                .style(button::text)
+                .on_press(Message::OpenSettings),
+            "Settings",
+            tooltip::Position::Bottom,
+        ),
+    ]
+    .spacing(10)
+    .align_y(iced::Center);
+    let mut content = column![toolbar].spacing(12);
+    if app.busy {
+        content = content.push(text("Saving / loading…"));
+    }
+    if let Some(error) = &app.error {
+        content =
+            content.push(row![text(error), button("Reload").on_press(Message::Retry)].spacing(8));
+    }
+    if app.recovered_session {
+        content = content.push(text("Recovered a running session. Review it and pause when ready; time since its start is included."));
+    }
+    if app.confirm_quit {
+        content = content.push(
+            row![
+                text("A task is running."),
+                button("Pause and quit").on_press(Message::ConfirmQuit),
+                button("Cancel").on_press(Message::CancelQuit)
+            ]
+            .spacing(12),
+        );
+    }
+    let running = app.snapshot.active.is_some();
+    let icon = if running { Icon::Pause } else { Icon::Play };
+    let mut toggle = button(
+        container(icons::view(icon, 42.0))
+            .center_x(Fill)
+            .center_y(Fill),
+    )
+    .width(Fill)
+    .height(80);
+    if app.ready() && app.selected.is_some() {
+        toggle = toggle.on_press(Message::Toggle);
+    }
+    content = content
+        .push(calendar::view(app))
+        .push(task_selector::view(app))
+        .push(tooltip(
+            toggle,
+            if running {
+                "Pause tracking"
+            } else {
+                "Start tracking"
+            },
+            tooltip::Position::Top,
+        ));
+    container(content)
+        .padding(18)
+        .width(Fill)
+        .height(Fill)
+        .into()
+}

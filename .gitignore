@@ -1,0 +1,23 @@
+# IDE
+.idea
+
+# Rust build output
+/target/
+
+# rustfmt backup files
+**/*.rs.bk
+
+# Debug symbols generated on macOS
+*.dSYM/
+
+# Local environment overrides
+.env
+.env.*
+!.env.example
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Keep Cargo.lock tracked for this application.
+# iced uses Cargo's target directory and needs no additional ignores.
