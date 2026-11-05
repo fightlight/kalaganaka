@@ -1,5 +1,5 @@
 use iced::{
-    Element, Point, Rectangle, Renderer, Size, Theme, mouse,
+    Color, Element, Point, Rectangle, Renderer, Size, Theme, mouse,
     widget::{
         canvas,
         canvas::{Frame, Geometry, Path, Stroke},
@@ -8,8 +8,8 @@ use iced::{
 
 #[derive(Clone, Copy)]
 pub enum Icon {
-    Play,
-    Pause,
+    Play(Color),
+    Pause(Color),
     Settings,
     Statistics,
 }
@@ -33,12 +33,12 @@ impl<Message> canvas::Program<Message> for Icon {
         frame.scale(bounds.width.min(bounds.height) / 24.0);
         let palette = theme.extended_palette();
         let colour = match self {
-            Self::Play | Self::Pause => palette.primary.strong.text,
+            Self::Play(colour) | Self::Pause(colour) => *colour,
             Self::Settings | Self::Statistics => palette.background.base.text,
         };
         let stroke = Stroke::default().with_color(colour).with_width(1.8);
         match self {
-            Self::Play => {
+            Self::Play(_) => {
                 let triangle = Path::new(|path| {
                     path.move_to(Point::new(7.0, 3.0));
                     path.line_to(Point::new(21.0, 12.0));
@@ -47,7 +47,7 @@ impl<Message> canvas::Program<Message> for Icon {
                 });
                 frame.fill(&triangle, colour);
             }
-            Self::Pause => {
+            Self::Pause(_) => {
                 frame.fill_rectangle(Point::new(5.0, 3.0), Size::new(5.0, 18.0), colour);
                 frame.fill_rectangle(Point::new(14.0, 3.0), Size::new(5.0, 18.0), colour);
             }

@@ -60,31 +60,10 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .spacing(12),
         );
     }
-    let running = app.snapshot.active.is_some();
-    let icon = if running { Icon::Pause } else { Icon::Play };
-    let mut toggle = button(
-        container(icons::view(icon, 42.0))
-            .center_x(Fill)
-            .center_y(Fill),
-    )
-    .width(Fill)
-    .height(80);
-    if app.ready() && app.selected.is_some() {
-        toggle = toggle.on_press(Message::Toggle);
-    }
     let content = column![header]
         .spacing(12)
         .push(calendar::view(app))
-        .push(task_selector::view(app))
-        .push(tooltip(
-            toggle,
-            if running {
-                "Pause tracking"
-            } else {
-                "Start tracking"
-            },
-            tooltip::Position::Top,
-        ));
+        .push(task_selector::view(app));
     container(content)
         .padding(18)
         .width(Fill)
