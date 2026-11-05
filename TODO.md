@@ -1,6 +1,8 @@
 - bug: limit window resizing (to not make it too small)
-- feat: add time frame manually (check time frame range with existing time frames)
-- feat: tags for frames
-- feat: if the 'Today' window visible jump to the current time position (on startup, on days and day/week layout change)
+- feat: pause current task on screen lock (settings' checkbox, default: on)
 - feat: lock task selector and 'add new task' when the task is in progress (not paused)
-- feat: pause current task on screen lock
+- feat: task removal (with the frames)
+- feat: add time frame manually (check time frame range with existing time frames)
+- feat: time frame edit
+- feat: tags for frames
+- feat: jira sync

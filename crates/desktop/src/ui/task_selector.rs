@@ -92,13 +92,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
 pub fn menu(app: &App) -> Element<'_, Message> {
     let mut items = column![];
-    let query = app.task_search.to_lowercase();
-    let matches = app
-        .snapshot
-        .tasks
-        .iter()
-        .filter(|task| task.name.to_lowercase().contains(&query))
-        .take(app.settings.task_limit as usize);
+    let matches = matching_tasks(app);
     let mut found = false;
     for task in matches {
         found = true;
@@ -151,6 +145,19 @@ pub fn menu(app: &App) -> Element<'_, Message> {
     .into()
 }
 
+fn matching_tasks(app: &App) -> impl Iterator<Item = &tracking_core::Task> {
+    let query = app.task_search.to_lowercase();
+    app.snapshot
+        .tasks
+        .iter()
+        .filter(move |task| task.name.to_lowercase().contains(&query))
+        .rev()
+        .take(app.settings.task_limit as usize)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+}
+
 fn task_item<'a>(app: &'a App, task: &'a tracking_core::Task) -> Element<'a, Message> {
     let select = button(text(&task.name).width(Fill))
         .width(Fill)
@@ -162,4 +169,35 @@ fn task_item<'a>(app: &'a App, task: &'a tracking_core::Task) -> Element<'a, Mes
         .style(button::text)
         .on_press_maybe(app.ready().then_some(Message::EditTask(task.clone())));
     row![select, pencil].align_y(iced::Center).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracking_core::{Snapshot, Tracker};
+
+    #[test]
+    fn newest_matching_tasks_keep_creation_order() {
+        let (mut app, _) = App::new();
+        let mut tracker = Tracker::new(Snapshot::default());
+        for name in [
+            "Alpha", "Beta", "Another", "Gamma", "Again", "Delta", "Last",
+        ] {
+            tracker.add_task(name).unwrap();
+        }
+        app.snapshot = tracker.into_snapshot();
+        app.settings.task_limit = 3;
+        let names = |app: &App| {
+            matching_tasks(app)
+                .map(|task| task.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&app), ["Again", "Delta", "Last"]);
+        app.task_search = "A".into();
+        assert_eq!(names(&app), ["Again", "Delta", "Last"]);
+        app.task_search = "Ga".into();
+        assert_eq!(names(&app), ["Gamma", "Again"]);
+        app.task_search = "missing".into();
+        assert!(names(&app).is_empty());
+    }
 }
