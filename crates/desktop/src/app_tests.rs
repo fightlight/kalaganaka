@@ -16,6 +16,35 @@ fn stored(snapshot: Snapshot) -> Message {
     }))
 }
 
+#[test]
+fn adding_task_selects_it_only_when_paused_and_save_succeeds() {
+    for running in [false, true] {
+        let mut app = ready_app();
+        let mut tracker = Tracker::new(Snapshot::default());
+        let original_id = tracker.add_task("Original").unwrap();
+        if running {
+            tracker.start(original_id, Utc::now()).unwrap();
+        }
+        app.snapshot = tracker.into_snapshot();
+        app.selected = Some(app.snapshot.tasks[0].clone());
+        app.new_task_name = "New".into();
+        let _ = app.update(Message::AddTask);
+        let _ = app.update(Message::Stored(Err("Save failed".into())));
+        assert_eq!(app.selected.as_ref().unwrap().id, original_id);
+        assert_eq!(app.new_task_name, "New");
+
+        let _ = app.update(Message::AddTask);
+        let mut tracker = Tracker::new(app.snapshot.clone());
+        let new_id = tracker.add_task("New").unwrap();
+        let _ = app.update(stored(tracker.into_snapshot()));
+        assert_eq!(
+            app.selected.as_ref().unwrap().id,
+            if running { original_id } else { new_id }
+        );
+        assert!(app.new_task_name.is_empty());
+    }
+}
+
 fn calendar_state(tree: &Tree, tag: tree::Tag) -> Option<*const ()> {
     if tree.tag == tag {
         if let tree::State::Some(state) = &tree.state {

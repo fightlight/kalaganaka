@@ -179,6 +179,13 @@ impl App {
                                 snapshot.tasks.iter().find(|task| task.id == active.task_id)
                             })
                             .or_else(|| {
+                                if self.adding_task && snapshot.active.is_none() {
+                                    snapshot.tasks.last()
+                                } else {
+                                    None
+                                }
+                            })
+                            .or_else(|| {
                                 self.selected.as_ref().and_then(|selected| {
                                     snapshot.tasks.iter().find(|task| task.id == selected.id)
                                 })
