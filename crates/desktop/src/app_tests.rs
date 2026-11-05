@@ -185,6 +185,7 @@ fn calendar_state_survives_task_menu_and_editing() {
 #[test]
 fn selector_scroll_state_survives_edit_save_and_cancel() {
     let mut app = ready_app();
+    app.settings.task_limit = 20;
     let mut tracker = Tracker::new(Snapshot::default());
     for index in 0..20 {
         tracker.add_task(&format!("Task {index}")).unwrap();
@@ -214,4 +215,64 @@ fn selector_scroll_state_survives_edit_save_and_cancel() {
     let _ = app.update(Message::CancelTaskEdit);
     tree.diff(ui::main_window::view(&app).as_widget());
     assert_eq!(scroll_state(&tree), Some(original));
+}
+
+#[test]
+fn selector_search_filters_all_tasks_before_applying_the_limit() {
+    fn result_count(app: &App) -> usize {
+        fn find(tree: &Tree, tag: tree::Tag) -> Option<&Tree> {
+            if tree.tag == tag {
+                return Some(tree);
+            }
+            tree.children.iter().find_map(|child| find(child, tag))
+        }
+        let scrollable: Element<'_, Message> =
+            iced::widget::scrollable(iced::widget::text("")).into();
+        let tag = Tree::new(scrollable.as_widget()).tag;
+        let menu = Tree::new(ui::task_selector::menu(app).as_widget());
+        find(&menu, tag).unwrap().children[0].children.len()
+    }
+
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    for index in 0..12 {
+        tracker.add_task(&format!("Other {index}")).unwrap();
+    }
+    for index in 0..4 {
+        tracker.add_task(&format!("Needle {index}")).unwrap();
+    }
+    app.snapshot = tracker.into_snapshot();
+    app.settings.task_limit = 3;
+    assert_eq!(result_count(&app), 3);
+    let _ = app.update(Message::SearchTasks("NEEDLE".into()));
+    assert_eq!(result_count(&app), 3);
+    app.settings.task_limit = 20;
+    assert_eq!(result_count(&app), 4);
+    let _ = app.update(Message::ToggleTaskMenu);
+    assert!(app.task_search.is_empty());
+}
+
+#[test]
+fn task_limit_input_rejects_invalid_characters_and_values() {
+    let mut app = ready_app();
+    for input in ["0", "31", "-1", "2a", " 2", "３"] {
+        let _ = app.update(Message::TaskLimitInput(input.into()));
+        assert_eq!(app.task_limit_input, "5");
+    }
+    for input in ["", "1", "30"] {
+        let _ = app.update(Message::TaskLimitInput(input.into()));
+        assert_eq!(app.task_limit_input, input);
+    }
+    let _ = app.update(Message::SaveTaskLimit);
+    assert!(app.busy);
+    let _ = app.update(Message::Stored(Ok(Data {
+        snapshot: Snapshot::default(),
+        settings: Settings {
+            task_limit: 30,
+            ..Settings::default()
+        },
+    })));
+    let _ = app.update(Message::AdjustTaskLimit(1));
+    assert_eq!(app.task_limit_input, "30");
+    assert!(!app.busy);
 }

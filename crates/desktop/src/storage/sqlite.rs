@@ -23,10 +23,10 @@ impl SqliteRepository {
         let version: u32 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(|error| error.to_string())?;
-        if version > 2 {
+        if version > 4 {
             return Err("This database requires a newer version of Kalaganaka.".into());
         }
-        if version < 2 {
+        if version < 4 {
             let transaction = connection
                 .transaction()
                 .map_err(|error| error.to_string())?;
@@ -35,8 +35,20 @@ impl SqliteRepository {
                     .execute_batch(include_str!("../../migrations/001_initial.sql"))
                     .map_err(|error| error.to_string())?;
             }
+            if version < 2 {
+                transaction
+                    .execute_batch(include_str!("../../migrations/002_settings.sql"))
+                    .map_err(|error| error.to_string())?;
+            }
+            if version < 3 {
+                transaction
+                    .execute_batch(include_str!("../../migrations/003_task_limit.sql"))
+                    .map_err(|error| error.to_string())?;
+            }
             transaction
-                .execute_batch(include_str!("../../migrations/002_settings.sql"))
+                .execute_batch(include_str!(
+                    "../../migrations/004_remove_task_limit_constraint.sql"
+                ))
                 .map_err(|error| error.to_string())?;
             transaction.commit().map_err(|error| error.to_string())?;
         }
@@ -44,25 +56,26 @@ impl SqliteRepository {
     }
 
     pub fn load_settings(&self) -> Result<Settings, String> {
-        let value: String = self
+        let (value, task_limit): (String, u32) = self
             .0
             .query_row(
-                "SELECT theme FROM settings WHERE singleton = 1",
+                "SELECT theme, task_limit FROM settings WHERE singleton = 1",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|error| error.to_string())?;
         Ok(Settings {
             theme: value.parse()?,
+            task_limit,
         })
     }
 
     pub fn save_settings(&self, settings: Settings) -> Result<(), String> {
         self.0
             .execute(
-                "INSERT INTO settings (singleton, theme) VALUES (1, ?1)
-             ON CONFLICT(singleton) DO UPDATE SET theme = excluded.theme",
-                [settings.theme.as_str()],
+                "INSERT INTO settings (singleton, theme, task_limit) VALUES (1, ?1, ?2)
+             ON CONFLICT(singleton) DO UPDATE SET theme = excluded.theme, task_limit = excluded.task_limit",
+                params![settings.theme.as_str(), settings.task_limit],
             )
             .map_err(|error| error.to_string())?;
         Ok(())

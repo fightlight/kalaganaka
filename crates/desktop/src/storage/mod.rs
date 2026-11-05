@@ -15,6 +15,7 @@ pub struct Data {
 pub enum Command {
     Load,
     SetTheme(ThemePreference),
+    SetTaskLimit(u32),
     AddTask(String),
     RenameTask(Uuid, String),
     Start(Uuid, DateTime<Utc>),
@@ -34,6 +35,16 @@ pub async fn execute(command: Command) -> Result<Data, String> {
                 repository.save_settings(settings)?;
                 Ok(Data { snapshot, settings })
             }
+            Command::SetTaskLimit(limit) => {
+                if !(crate::settings::MIN_TASK_LIMIT..=crate::settings::MAX_TASK_LIMIT)
+                    .contains(&limit)
+                {
+                    return Err("Task results limit must be between 1 and 30.".into());
+                }
+                settings.task_limit = limit;
+                repository.save_settings(settings)?;
+                Ok(Data { snapshot, settings })
+            }
             command => {
                 let mut tracker = Tracker::new(snapshot);
                 match command {
@@ -49,7 +60,9 @@ pub async fn execute(command: Command) -> Result<Data, String> {
                         tracker.start(id, now).map_err(|error| error.to_string())?
                     }
                     Command::Pause(now) => tracker.pause(now).map_err(|error| error.to_string())?,
-                    Command::Load | Command::SetTheme(_) => unreachable!(),
+                    Command::Load | Command::SetTheme(_) | Command::SetTaskLimit(_) => {
+                        unreachable!()
+                    }
                 }
                 let snapshot = tracker.into_snapshot();
                 repository.save(&snapshot)?;

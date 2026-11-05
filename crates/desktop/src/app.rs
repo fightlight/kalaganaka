@@ -3,7 +3,7 @@ use iced::{Element, Subscription, Task, window};
 use tracking_core::Snapshot;
 
 use crate::{
-    settings::{Settings, ThemePreference},
+    settings::{MAX_TASK_LIMIT, MIN_TASK_LIMIT, Settings, ThemePreference},
     storage::{self, Command, Data},
     ui,
 };
@@ -19,6 +19,8 @@ pub enum Message {
     Toggle,
     SelectTask(tracking_core::Task),
     ToggleTaskMenu,
+    SearchTasks(String),
+    FocusTaskSearch,
     EditTask(tracking_core::Task),
     EditTaskName(String),
     SaveTaskName,
@@ -31,6 +33,9 @@ pub enum Message {
     OpenStatistics,
     OpenSettings,
     SetTheme(ThemePreference),
+    TaskLimitInput(String),
+    SaveTaskLimit,
+    AdjustTaskLimit(i32),
     SystemThemeChanged(iced::theme::Mode),
     WindowOpened(window::Id),
     CloseRequested(window::Id),
@@ -51,6 +56,9 @@ pub struct App {
     pub selected: Option<tracking_core::Task>,
     pub new_task_name: String,
     pub task_menu_open: bool,
+    pub task_search: String,
+    pub task_limit_input: String,
+    pub task_limit_error: bool,
     pub editing_task: Option<(uuid::Uuid, String)>,
     pub date: NaiveDate,
     pub mode: ViewMode,
@@ -66,6 +74,7 @@ pub struct App {
     system_theme: iced::theme::Mode,
     adding_task: bool,
     renaming_task: bool,
+    saving_task_limit: bool,
     quitting: bool,
 }
 
@@ -83,6 +92,9 @@ impl App {
                 selected: None,
                 new_task_name: String::new(),
                 task_menu_open: false,
+                task_search: String::new(),
+                task_limit_input: Settings::default().task_limit.to_string(),
+                task_limit_error: false,
                 editing_task: None,
                 date: Local::now().date_naive(),
                 mode: ViewMode::Day,
@@ -98,6 +110,7 @@ impl App {
                 system_theme: iced::theme::Mode::None,
                 adding_task: false,
                 renaming_task: false,
+                saving_task_limit: false,
                 quitting: false,
             },
             Task::batch([
@@ -140,6 +153,7 @@ impl App {
         self.busy = true;
         self.adding_task = matches!(&command, Command::AddTask(_));
         self.renaming_task = matches!(&command, Command::RenameTask(..));
+        self.saving_task_limit = matches!(&command, Command::SetTaskLimit(_));
         self.error = None;
         Task::perform(storage::execute(command), Message::Stored)
     }
@@ -151,6 +165,10 @@ impl App {
                 match result {
                     Ok(Data { snapshot, settings }) => {
                         let tracking_changed = self.snapshot.active != snapshot.active;
+                        if !self.loaded || self.saving_task_limit {
+                            self.task_limit_input = settings.task_limit.to_string();
+                            self.task_limit_error = false;
+                        }
                         self.settings = settings;
                         self.recovered_session = !self.loaded && snapshot.active.is_some();
                         self.loaded = true;
@@ -201,6 +219,7 @@ impl App {
             }
             Message::SelectTask(task) if self.ready() => {
                 self.task_menu_open = false;
+                self.task_search.clear();
                 self.editing_task = None;
                 if self.snapshot.active.is_some() {
                     return self.store(Command::Start(task.id, Utc::now()));
@@ -210,6 +229,22 @@ impl App {
             Message::ToggleTaskMenu if self.ready() => {
                 self.task_menu_open = !self.task_menu_open;
                 self.editing_task = None;
+                self.task_search.clear();
+                if self.task_menu_open {
+                    return iced::widget::operation::focus("task-search");
+                }
+            }
+            Message::SearchTasks(query) => {
+                self.task_search = query;
+                self.editing_task = None;
+                return iced::widget::operation::snap_to(
+                    "task-results",
+                    iced::widget::scrollable::RelativeOffset::START,
+                );
+            }
+            Message::FocusTaskSearch if self.ready() => {
+                self.editing_task = None;
+                return iced::widget::operation::focus("task-search");
             }
             Message::EditTask(task) if self.ready() => {
                 self.editing_task = Some((task.id, task.name));
@@ -283,6 +318,44 @@ impl App {
             }
             Message::SetTheme(theme) if self.ready() && theme != self.settings.theme => {
                 return self.store(Command::SetTheme(theme));
+            }
+            Message::TaskLimitInput(value) => {
+                if value.is_empty()
+                    || (value.bytes().all(|byte| byte.is_ascii_digit())
+                        && value.parse::<u32>().ok().is_some_and(|limit| {
+                            (MIN_TASK_LIMIT..=MAX_TASK_LIMIT).contains(&limit)
+                        }))
+                {
+                    self.task_limit_input = value;
+                    self.task_limit_error = false;
+                }
+            }
+            Message::SaveTaskLimit if self.ready() => {
+                match self.task_limit_input.trim().parse::<u32>() {
+                    Ok(limit) if (MIN_TASK_LIMIT..=MAX_TASK_LIMIT).contains(&limit) => {
+                        if limit != self.settings.task_limit {
+                            return self.store(Command::SetTaskLimit(limit));
+                        }
+                        self.task_limit_input = limit.to_string();
+                    }
+                    _ => self.task_limit_error = true,
+                }
+            }
+            Message::AdjustTaskLimit(change) if self.ready() => {
+                let current = self
+                    .task_limit_input
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|value| (MIN_TASK_LIMIT..=MAX_TASK_LIMIT).contains(value))
+                    .unwrap_or(self.settings.task_limit);
+                let limit = current
+                    .saturating_add_signed(change)
+                    .clamp(MIN_TASK_LIMIT, MAX_TASK_LIMIT);
+                self.task_limit_input = limit.to_string();
+                self.task_limit_error = false;
+                if limit != self.settings.task_limit {
+                    return self.store(Command::SetTaskLimit(limit));
+                }
             }
             Message::CloseRequested(id) => {
                 if id == self.main_window {

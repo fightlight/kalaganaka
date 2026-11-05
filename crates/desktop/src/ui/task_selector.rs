@@ -92,7 +92,16 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
 pub fn menu(app: &App) -> Element<'_, Message> {
     let mut items = column![];
-    for task in &app.snapshot.tasks {
+    let query = app.task_search.to_lowercase();
+    let matches = app
+        .snapshot
+        .tasks
+        .iter()
+        .filter(|task| task.name.to_lowercase().contains(&query))
+        .take(app.settings.task_limit as usize);
+    let mut found = false;
+    for task in matches {
+        found = true;
         let item: Element<'_, Message> = if let Some((id, name)) = &app.editing_task {
             if *id == task.id {
                 text_input("Task name", name)
@@ -109,11 +118,37 @@ pub fn menu(app: &App) -> Element<'_, Message> {
         };
         items = items.push(item);
     }
-    container(scrollable(items).height(iced::Length::Shrink))
-        .width(260)
-        .max_height(300)
-        .style(container::rounded_box)
+    if !found {
+        items = items.push(container(text("No matching tasks")).padding(10));
+    }
+    let search_input = text_input("Search tasks", &app.task_search)
+        .id("task-search")
+        .on_input_maybe(app.ready().then_some(Message::SearchTasks))
+        .padding(10);
+    let search: Element<'_, Message> = if app.editing_task.is_some() && app.ready() {
+        button(if app.task_search.is_empty() {
+            "Search tasks"
+        } else {
+            &app.task_search
+        })
+        .width(Fill)
+        .padding(10)
+        .style(button::text)
+        .on_press(Message::FocusTaskSearch)
         .into()
+    } else {
+        search_input.into()
+    };
+    container(column![
+        search,
+        scrollable(items)
+            .id("task-results")
+            .height(iced::Length::Shrink)
+    ])
+    .width(260)
+    .max_height(300)
+    .style(container::rounded_box)
+    .into()
 }
 
 fn task_item<'a>(app: &'a App, task: &'a tracking_core::Task) -> Element<'a, Message> {

@@ -1,8 +1,21 @@
 use iced::{Theme, theme::Mode};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub const MIN_TASK_LIMIT: u32 = 1;
+pub const MAX_TASK_LIMIT: u32 = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     pub theme: ThemePreference,
+    pub task_limit: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            theme: ThemePreference::default(),
+            task_limit: 5,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

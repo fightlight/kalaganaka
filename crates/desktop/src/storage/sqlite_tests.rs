@@ -116,3 +116,38 @@ fn renamed_task_and_its_tracking_data_survive_reopening() {
     assert_eq!(actual.active, expected.active);
     assert_eq!(actual.tasks[0].name, "Coding");
 }
+
+#[test]
+fn settings_migration_preserves_existing_data_and_removes_old_limit_constraint() {
+    let database = TestDatabase::new();
+    let connection = Connection::open(database.path()).unwrap();
+    connection
+        .execute_batch(include_str!("../../migrations/001_initial.sql"))
+        .unwrap();
+    connection
+        .execute_batch(include_str!("../../migrations/002_settings.sql"))
+        .unwrap();
+    connection.execute_batch("ALTER TABLE settings ADD COLUMN task_limit INTEGER NOT NULL DEFAULT 10 CHECK (task_limit BETWEEN 3 AND 30); UPDATE settings SET theme = 'dark', task_limit = 20; PRAGMA user_version = 3;").unwrap();
+    drop(connection);
+    let repository = SqliteRepository::open(&database.path()).unwrap();
+    let settings = repository.load_settings().unwrap();
+    assert_eq!(settings.theme, crate::settings::ThemePreference::Dark);
+    assert_eq!(settings.task_limit, 20);
+    repository
+        .save_settings(Settings {
+            task_limit: 1,
+            ..settings
+        })
+        .unwrap();
+    drop(repository);
+    let repository = SqliteRepository::open(&database.path()).unwrap();
+    assert_eq!(repository.load_settings().unwrap().task_limit, 1);
+}
+
+#[test]
+fn new_database_defaults_task_limit_to_five() {
+    let database = TestDatabase::new();
+    let repository = SqliteRepository::open(&database.path()).unwrap();
+    assert_eq!(repository.load_settings().unwrap(), Settings::default());
+    assert_eq!(repository.load_settings().unwrap().task_limit, 5);
+}
