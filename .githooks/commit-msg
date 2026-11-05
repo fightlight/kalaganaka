@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Git passes the commit message file as the first argument.
+if sed -n '1p' "$1" | grep -Eq '^(feat|fix|perf|docs|refactor|style|test|build|ci|chore|revert)(\([^()[:space:]]+\))?!?: [^[:space:]].*$'; then
+    exit 0
+fi
+
+cat >&2 <<'MESSAGE'
+Commit rejected: use a Conventional Commit subject.
+
+Format: type(scope): description
+Scope is optional; add ! before : for a breaking change.
+Types: feat, fix, perf, docs, refactor, style, test, build, ci, chore, revert
+
+Examples:
+  fix(calendar): preserve the selected date
+  docs: explain local setup
+  feat(storage)!: replace the data format
+MESSAGE
+exit 1
