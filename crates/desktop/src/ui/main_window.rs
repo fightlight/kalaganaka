@@ -4,20 +4,46 @@ use super::{
     task_selector,
 };
 use crate::app::{App, Message, ViewMode};
+use chrono::Datelike;
 use iced::{
     Element, Fill,
     widget::{button, column, container, row, space, text, tooltip},
 };
 
 pub fn view(app: &App) -> Element<'_, Message> {
-    let toolbar = row![
-        button("‹").on_press(Message::Navigate(-1)),
-        button("Today").on_press(Message::Today),
-        button("›").on_press(Message::Navigate(1)),
-        text(app.date.format("%d %B %Y").to_string()),
-        button("Day").on_press(Message::ChangeView(ViewMode::Day)),
-        button("Week").on_press(Message::ChangeView(ViewMode::Week)),
-        space().width(Fill),
+    let (next_view, switch_label) = match app.mode {
+        ViewMode::Day => (ViewMode::Week, "Switch to week view"),
+        ViewMode::Week => (ViewMode::Day, "Switch to day view"),
+    };
+    let actions = row![
+        tooltip(
+            button(
+                container(text(app.now.day().to_string()).size(18))
+                    .center_x(24)
+                    .center_y(24)
+                    .style(|theme: &iced::Theme| container::Style {
+                        border: iced::Border {
+                            color: theme.extended_palette().background.base.text,
+                            width: 1.8,
+                            radius: 2.0.into(),
+                        },
+                        ..container::Style::default()
+                    })
+            )
+            .padding(10)
+            .style(button::text)
+            .on_press(Message::Today),
+            "Go to today",
+            tooltip::Position::Bottom,
+        ),
+        tooltip(
+            button(icons::view(Icon::Calendar, 24.0))
+                .padding(10)
+                .style(button::text)
+                .on_press(Message::ChangeView(next_view)),
+            switch_label,
+            tooltip::Position::Bottom,
+        ),
         tooltip(
             button(icons::view(Icon::Statistics, 24.0))
                 .padding(10)
@@ -34,6 +60,27 @@ pub fn view(app: &App) -> Element<'_, Message> {
             "Settings",
             tooltip::Position::Bottom,
         ),
+    ]
+    .spacing(10)
+    .align_y(iced::Center);
+    let arrows = row![
+        button(icons::view(Icon::Previous, 24.0))
+            .padding(5)
+            .style(button::text)
+            .on_press(Message::Navigate(-1)),
+        button(icons::view(Icon::Next, 24.0))
+            .padding(5)
+            .style(button::text)
+            .on_press(Message::Navigate(1)),
+    ];
+    let navigation = row![arrows, space().width(Fill), actions]
+        .spacing(10)
+        .width(Fill)
+        .align_y(iced::Center);
+    let toolbar = row![
+        space().width(Fill),
+        text(app.date.format("%d %B %Y").to_string()),
+        navigation
     ]
     .spacing(10)
     .align_y(iced::Center);

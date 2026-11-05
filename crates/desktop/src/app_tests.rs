@@ -110,3 +110,25 @@ fn today_view_changes_and_navigation_request_scrolling_when_today_is_visible() {
     assert_eq!(app.update(Message::Navigate(-1)).units(), 0);
     assert!(app.update(Message::Navigate(1)).units() > 0);
 }
+
+#[test]
+fn navigation_uses_selected_view_and_today_returns_to_local_date() {
+    let mut app = ready_app();
+    let original = chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap();
+    app.date = original;
+
+    let _ = app.update(Message::ChangeView(ViewMode::Week));
+    assert_eq!(app.mode, ViewMode::Week);
+    let _ = app.update(Message::Navigate(1));
+    assert_eq!(app.date, original + chrono::Days::new(7));
+    let _ = app.update(Message::Navigate(-1));
+    assert_eq!(app.date, original);
+
+    let _ = app.update(Message::ChangeView(ViewMode::Day));
+    assert_eq!(app.mode, ViewMode::Day);
+    let _ = app.update(Message::Navigate(1));
+    assert_eq!(app.date, original + chrono::Days::new(1));
+
+    let _ = app.update(Message::Today);
+    assert_eq!(app.date, app.now.date_naive());
+}

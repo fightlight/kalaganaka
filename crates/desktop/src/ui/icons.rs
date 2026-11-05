@@ -10,6 +10,9 @@ use iced::{
 pub enum Icon {
     Play(Color),
     Pause(Color),
+    Calendar,
+    Previous,
+    Next,
     Settings,
     Statistics,
 }
@@ -34,7 +37,9 @@ impl<Message> canvas::Program<Message> for Icon {
         let palette = theme.extended_palette();
         let colour = match self {
             Self::Play(colour) | Self::Pause(colour) => *colour,
-            Self::Settings | Self::Statistics => palette.background.base.text,
+            Self::Calendar | Self::Previous | Self::Next | Self::Settings | Self::Statistics => {
+                palette.background.base.text
+            }
         };
         let stroke = Stroke::default().with_color(colour).with_width(1.8);
         match self {
@@ -50,6 +55,38 @@ impl<Message> canvas::Program<Message> for Icon {
             Self::Pause(_) => {
                 frame.fill_rectangle(Point::new(5.0, 3.0), Size::new(5.0, 18.0), colour);
                 frame.fill_rectangle(Point::new(14.0, 3.0), Size::new(5.0, 18.0), colour);
+            }
+            Self::Calendar => {
+                frame.stroke(
+                    &Path::rectangle(Point::new(3.0, 5.0), Size::new(18.0, 16.0)),
+                    stroke,
+                );
+                frame.stroke(
+                    &Path::line(Point::new(3.0, 10.0), Point::new(21.0, 10.0)),
+                    stroke,
+                );
+                for x in [7.0, 17.0] {
+                    frame.stroke(&Path::line(Point::new(x, 2.0), Point::new(x, 7.0)), stroke);
+                }
+                for y in [13.0, 17.0] {
+                    for x in [6.0, 11.0, 16.0] {
+                        frame.fill_rectangle(Point::new(x, y), Size::new(2.0, 2.0), colour);
+                    }
+                }
+            }
+            Self::Previous | Self::Next => {
+                frame.stroke(&Path::circle(Point::new(12.0, 12.0), 9.0), stroke);
+                let (outer, inner) = if matches!(self, Self::Previous) {
+                    (14.0, 10.0)
+                } else {
+                    (10.0, 14.0)
+                };
+                let chevron = Path::new(|path| {
+                    path.move_to(Point::new(outer, 8.0));
+                    path.line_to(Point::new(inner, 12.0));
+                    path.line_to(Point::new(outer, 16.0));
+                });
+                frame.stroke(&chevron, stroke);
             }
             Self::Settings => {
                 let gear = Path::new(|path| {
