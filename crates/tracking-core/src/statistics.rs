@@ -11,6 +11,7 @@ pub struct TaskTotal {
 }
 
 /// Completed time only, clipped to the half-open reporting interval.
+/// Tasks with zero completed time in the interval are omitted.
 pub fn totals(snapshot: &Snapshot, start: DateTime<Utc>, end: DateTime<Utc>) -> Vec<TaskTotal> {
     let mut totals: Vec<_> = snapshot
         .tasks
@@ -30,6 +31,7 @@ pub fn totals(snapshot: &Snapshot, start: DateTime<Utc>, end: DateTime<Utc>) -> 
                 duration,
             }
         })
+        .filter(|total| total.duration > Duration::zero())
         .collect();
     totals.sort_by(|a, b| {
         b.duration

@@ -179,9 +179,35 @@ fn statistics_clip_midnight_crossings_and_exclude_outside_or_running_time() {
     assert_eq!(totals.len(), 1);
     assert_eq!(totals[0].task_id, task_id);
     assert_eq!(totals[0].duration, Duration::minutes(105));
-    assert_eq!(
-        statistics::totals(&snapshot, end, end)[0].duration,
-        Duration::zero()
+    assert!(statistics::totals(&snapshot, end, end).is_empty());
+}
+
+#[test]
+fn statistics_omit_tasks_without_completed_time_in_the_reporting_interval() {
+    let mut tracker = Tracker::new(Snapshot::default());
+    let recorded = tracker.add_task("Recorded").unwrap();
+    tracker.add_task("Never started").unwrap();
+    let before = tracker.add_task("Before period").unwrap();
+    let after = tracker.add_task("After period").unwrap();
+    let running = tracker.add_task("Still running").unwrap();
+    let start = time("2026-11-02T00:00:00Z");
+    let end = start + Duration::days(1);
+
+    tracker.start(before, start - Duration::hours(1)).unwrap();
+    tracker.pause(start).unwrap();
+    tracker.start(recorded, start).unwrap();
+    tracker.pause(start + Duration::minutes(10)).unwrap();
+    tracker.start(after, end).unwrap();
+    tracker.pause(end + Duration::hours(1)).unwrap();
+    tracker.start(running, end + Duration::hours(2)).unwrap();
+    let snapshot = tracker.into_snapshot();
+
+    let totals = statistics::totals(&snapshot, start, end);
+    assert_eq!(totals.len(), 1);
+    assert_eq!(totals[0].task_id, recorded);
+    assert_eq!(totals[0].duration, Duration::minutes(10));
+    assert!(
+        statistics::totals(&snapshot, end + Duration::days(1), end + Duration::days(2)).is_empty()
     );
 }
 
