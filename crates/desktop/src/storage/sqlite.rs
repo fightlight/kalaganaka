@@ -149,7 +149,7 @@ impl Repository for SqliteRepository {
     fn save(&mut self, snapshot: &Snapshot) -> Result<(), String> {
         let transaction = self.0.transaction().map_err(|error| error.to_string())?;
         for task in &snapshot.tasks {
-            transaction.execute("INSERT INTO tasks (id, name, colour) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO NOTHING",
+            transaction.execute("INSERT INTO tasks (id, name, colour) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO UPDATE SET name = excluded.name",
                 params![task.id.to_string(), task.name, task.colour]).map_err(|error| error.to_string())?;
         }
         for frame in &snapshot.frames {

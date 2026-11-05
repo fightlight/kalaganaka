@@ -61,6 +61,29 @@ impl Tracker {
         Ok(id)
     }
 
+    pub fn rename_task(&mut self, task_id: Uuid, name: &str) -> Result<(), TrackingError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(TrackingError::EmptyName);
+        }
+        if self
+            .snapshot
+            .tasks
+            .iter()
+            .any(|task| task.id != task_id && task.name.to_lowercase() == name.to_lowercase())
+        {
+            return Err(TrackingError::DuplicateName);
+        }
+        let task = self
+            .snapshot
+            .tasks
+            .iter_mut()
+            .find(|task| task.id == task_id)
+            .ok_or(TrackingError::UnknownTask)?;
+        task.name = name.to_owned();
+        Ok(())
+    }
+
     pub fn start(&mut self, task_id: Uuid, now: DateTime<Utc>) -> Result<(), TrackingError> {
         if !self.snapshot.tasks.iter().any(|task| task.id == task_id) {
             return Err(TrackingError::UnknownTask);

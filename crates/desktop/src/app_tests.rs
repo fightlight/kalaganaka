@@ -132,3 +132,86 @@ fn navigation_uses_selected_view_and_today_returns_to_local_date() {
     let _ = app.update(Message::Today);
     assert_eq!(app.date, app.now.date_naive());
 }
+
+#[test]
+fn editing_can_be_cancelled_and_failed_saves_keep_the_draft() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let id = tracker.add_task("Development").unwrap();
+    app.snapshot = tracker.into_snapshot();
+    let task = app.snapshot.tasks[0].clone();
+    let _ = app.update(Message::ToggleTaskMenu);
+    let _ = app.update(Message::EditTask(task.clone()));
+    let _ = app.update(Message::EditTaskName("Draft".into()));
+    let _ = app.update(Message::CancelTaskEdit);
+    assert!(app.editing_task.is_none());
+    assert_eq!(app.snapshot.tasks[0].name, "Development");
+
+    let _ = app.update(Message::EditTask(task));
+    let _ = app.update(Message::EditTaskName("Draft".into()));
+    let _ = app.update(Message::SaveTaskName);
+    let _ = app.update(Message::Stored(Err("Storage failed".into())));
+    assert_eq!(app.editing_task, Some((id, "Draft".into())));
+    assert_eq!(app.error.as_deref(), Some("Storage failed"));
+    let mut renamed = app.snapshot.clone();
+    renamed.tasks[0].name = "Draft".into();
+    let _ = app.update(Message::SaveTaskName);
+    let _ = app.update(stored(renamed));
+    assert!(app.editing_task.is_none());
+    assert_eq!(app.snapshot.tasks[0].name, "Draft");
+}
+
+#[test]
+fn calendar_state_survives_task_menu_and_editing() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    tracker.add_task("Development").unwrap();
+    app.snapshot = tracker.into_snapshot();
+    let tag = Tree::new(ui::calendar::view(&app).as_widget()).tag;
+    let mut tree = Tree::new(ui::main_window::view(&app).as_widget());
+    let original = calendar_state(&tree, tag).unwrap();
+    let _ = app.update(Message::ToggleTaskMenu);
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(calendar_state(&tree, tag), Some(original));
+    let _ = app.update(Message::EditTask(app.snapshot.tasks[0].clone()));
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(calendar_state(&tree, tag), Some(original));
+    let _ = app.update(Message::CancelTaskEdit);
+    let _ = app.update(Message::ToggleTaskMenu);
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(calendar_state(&tree, tag), Some(original));
+}
+
+#[test]
+fn selector_scroll_state_survives_edit_save_and_cancel() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    for index in 0..20 {
+        tracker.add_task(&format!("Task {index}")).unwrap();
+    }
+    app.snapshot = tracker.into_snapshot();
+    let task = app.snapshot.tasks[15].clone();
+    let _ = app.update(Message::ToggleTaskMenu);
+    let scrollable: Element<'_, Message> = iced::widget::scrollable(iced::widget::text("")).into();
+    let scroll_tag = Tree::new(scrollable.as_widget()).tag;
+    let mut tree = Tree::new(ui::main_window::view(&app).as_widget());
+    let scroll_state = |tree: &Tree| calendar_state(tree.children.last().unwrap(), scroll_tag);
+    let original = scroll_state(&tree).expect("selector has scroll state");
+
+    let _ = app.update(Message::EditTask(task.clone()));
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(scroll_state(&tree), Some(original));
+    let _ = app.update(Message::EditTaskName("Renamed".into()));
+    let _ = app.update(Message::SaveTaskName);
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(scroll_state(&tree), Some(original));
+    let mut renamed = app.snapshot.clone();
+    renamed.tasks[15].name = "Renamed".into();
+    let _ = app.update(stored(renamed));
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(scroll_state(&tree), Some(original));
+    let _ = app.update(Message::EditTask(app.snapshot.tasks[15].clone()));
+    let _ = app.update(Message::CancelTaskEdit);
+    tree.diff(ui::main_window::view(&app).as_widget());
+    assert_eq!(scroll_state(&tree), Some(original));
+}

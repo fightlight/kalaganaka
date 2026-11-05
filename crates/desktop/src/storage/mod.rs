@@ -16,6 +16,7 @@ pub enum Command {
     Load,
     SetTheme(ThemePreference),
     AddTask(String),
+    RenameTask(Uuid, String),
     Start(Uuid, DateTime<Utc>),
     Pause(DateTime<Utc>),
 }
@@ -38,6 +39,11 @@ pub async fn execute(command: Command) -> Result<Data, String> {
                 match command {
                     Command::AddTask(name) => {
                         tracker.add_task(&name).map_err(|error| error.to_string())?;
+                    }
+                    Command::RenameTask(id, name) => {
+                        tracker
+                            .rename_task(id, &name)
+                            .map_err(|error| error.to_string())?;
                     }
                     Command::Start(id, now) => {
                         tracker.start(id, now).map_err(|error| error.to_string())?

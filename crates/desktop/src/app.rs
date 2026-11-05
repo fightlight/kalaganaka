@@ -18,6 +18,11 @@ pub enum Message {
     Tick,
     Toggle,
     SelectTask(tracking_core::Task),
+    ToggleTaskMenu,
+    EditTask(tracking_core::Task),
+    EditTaskName(String),
+    SaveTaskName,
+    CancelTaskEdit,
     TaskName(String),
     AddTask,
     ChangeView(ViewMode),
@@ -45,6 +50,8 @@ pub struct App {
     pub settings: Settings,
     pub selected: Option<tracking_core::Task>,
     pub new_task_name: String,
+    pub task_menu_open: bool,
+    pub editing_task: Option<(uuid::Uuid, String)>,
     pub date: NaiveDate,
     pub mode: ViewMode,
     pub now: chrono::DateTime<Local>,
@@ -58,6 +65,7 @@ pub struct App {
     settings_window: Option<window::Id>,
     system_theme: iced::theme::Mode,
     adding_task: bool,
+    renaming_task: bool,
     quitting: bool,
 }
 
@@ -74,6 +82,8 @@ impl App {
                 settings: Settings::default(),
                 selected: None,
                 new_task_name: String::new(),
+                task_menu_open: false,
+                editing_task: None,
                 date: Local::now().date_naive(),
                 mode: ViewMode::Day,
                 now: Local::now(),
@@ -87,6 +97,7 @@ impl App {
                 settings_window: None,
                 system_theme: iced::theme::Mode::None,
                 adding_task: false,
+                renaming_task: false,
                 quitting: false,
             },
             Task::batch([
@@ -115,12 +126,20 @@ impl App {
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick),
             window::close_requests().map(Message::CloseRequested),
             crate::platform::appearance::changes().map(Message::SystemThemeChanged),
+            iced::event::listen_with(|event, _status, _window| match event {
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                }) => Some(Message::CancelTaskEdit),
+                _ => None,
+            }),
         ])
     }
 
     fn store(&mut self, command: Command) -> Task<Message> {
         self.busy = true;
         self.adding_task = matches!(&command, Command::AddTask(_));
+        self.renaming_task = matches!(&command, Command::RenameTask(..));
         self.error = None;
         Task::perform(storage::execute(command), Message::Stored)
     }
@@ -152,6 +171,9 @@ impl App {
                         if self.adding_task {
                             self.new_task_name.clear();
                         }
+                        if self.renaming_task {
+                            self.editing_task = None;
+                        }
                         if self.quitting {
                             return iced::exit();
                         }
@@ -178,10 +200,33 @@ impl App {
                 }
             }
             Message::SelectTask(task) if self.ready() => {
+                self.task_menu_open = false;
+                self.editing_task = None;
                 if self.snapshot.active.is_some() {
                     return self.store(Command::Start(task.id, Utc::now()));
                 }
                 self.selected = Some(task);
+            }
+            Message::ToggleTaskMenu if self.ready() => {
+                self.task_menu_open = !self.task_menu_open;
+                self.editing_task = None;
+            }
+            Message::EditTask(task) if self.ready() => {
+                self.editing_task = Some((task.id, task.name));
+                return iced::widget::operation::focus("task-name-edit");
+            }
+            Message::EditTaskName(name) => {
+                if let Some((_, current)) = &mut self.editing_task {
+                    *current = name;
+                }
+            }
+            Message::SaveTaskName if self.ready() => {
+                if let Some((id, name)) = &self.editing_task {
+                    return self.store(Command::RenameTask(*id, name.clone()));
+                }
+            }
+            Message::CancelTaskEdit if self.editing_task.is_some() && self.ready() => {
+                self.editing_task = None;
             }
             Message::TaskName(name) => self.new_task_name = name,
             Message::AddTask if self.ready() => {

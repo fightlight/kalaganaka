@@ -7,7 +7,7 @@ use crate::app::{App, Message, ViewMode};
 use chrono::Datelike;
 use iced::{
     Element, Fill,
-    widget::{button, column, container, row, space, text, tooltip},
+    widget::{button, column, container, mouse_area, row, space, stack, text, tooltip},
 };
 
 pub fn view(app: &App) -> Element<'_, Message> {
@@ -111,9 +111,27 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .spacing(12)
         .push(calendar::view(app))
         .push(task_selector::view(app));
-    container(content)
-        .padding(18)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    let content = container(content).padding(18).width(Fill).height(Fill);
+    let mut layers = stack![content];
+    if app.task_menu_open {
+        let mut dismiss = mouse_area(space().width(Fill).height(Fill));
+        if app.editing_task.is_some() && app.ready() {
+            dismiss = dismiss.on_press(Message::CancelTaskEdit);
+        }
+        layers = layers.push(dismiss);
+        layers = layers.push(
+            container(task_selector::menu(app))
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::Right)
+                .align_y(iced::Bottom)
+                .padding(iced::Padding {
+                    top: 18.0,
+                    right: 106.0,
+                    bottom: 62.0,
+                    left: 18.0,
+                }),
+        );
+    }
+    layers.into()
 }

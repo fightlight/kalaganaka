@@ -15,6 +15,7 @@ pub enum Icon {
     Next,
     Settings,
     Statistics,
+    Pencil,
 }
 
 pub fn view<'a, Message: 'a>(icon: Icon, size: f32) -> Element<'a, Message> {
@@ -37,9 +38,12 @@ impl<Message> canvas::Program<Message> for Icon {
         let palette = theme.extended_palette();
         let colour = match self {
             Self::Play(colour) | Self::Pause(colour) => *colour,
-            Self::Calendar | Self::Previous | Self::Next | Self::Settings | Self::Statistics => {
-                palette.background.base.text
-            }
+            Self::Calendar
+            | Self::Previous
+            | Self::Next
+            | Self::Settings
+            | Self::Statistics
+            | Self::Pencil => palette.background.base.text,
         };
         let stroke = Stroke::default().with_color(colour).with_width(1.8);
         match self {
@@ -124,6 +128,17 @@ impl<Message> canvas::Program<Message> for Icon {
                         colour,
                     );
                 }
+            }
+            Self::Pencil => {
+                let pencil = Path::new(|path| {
+                    path.move_to(Point::new(4.0, 20.0));
+                    path.line_to(Point::new(5.0, 15.0));
+                    path.line_to(Point::new(17.0, 3.0));
+                    path.line_to(Point::new(21.0, 7.0));
+                    path.line_to(Point::new(9.0, 19.0));
+                    path.close();
+                });
+                frame.stroke(&pencil, stroke);
             }
         }
         vec![frame.into_geometry()]

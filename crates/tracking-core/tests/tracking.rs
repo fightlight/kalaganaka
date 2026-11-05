@@ -7,6 +7,41 @@ fn time(value: &str) -> DateTime<Utc> {
 }
 
 #[test]
+fn rename_validates_names_and_preserves_task_identity_and_tracking() {
+    let mut tracker = Tracker::new(Snapshot::default());
+    let id = tracker.add_task("Development").unwrap();
+    tracker.add_task("Review").unwrap();
+    let start = time("2026-11-02T09:00:00Z");
+    tracker.start(id, start).unwrap();
+    tracker.pause(start + Duration::minutes(10)).unwrap();
+    tracker.start(id, start + Duration::minutes(15)).unwrap();
+    let before = tracker.into_snapshot();
+    let mut tracker = Tracker::new(before.clone());
+
+    assert!(matches!(
+        tracker.rename_task(id, "  "),
+        Err(TrackingError::EmptyName)
+    ));
+    assert!(matches!(
+        tracker.rename_task(id, " REVIEW "),
+        Err(TrackingError::DuplicateName)
+    ));
+    assert!(matches!(
+        tracker.rename_task(Uuid::new_v4(), "Other"),
+        Err(TrackingError::UnknownTask)
+    ));
+    tracker.rename_task(id, " development ").unwrap();
+    tracker.rename_task(id, "  Coding  ").unwrap();
+
+    let after = tracker.into_snapshot();
+    assert_eq!(after.tasks[0].id, id);
+    assert_eq!(after.tasks[0].name, "Coding");
+    assert_eq!(after.tasks[0].colour, before.tasks[0].colour);
+    assert_eq!(after.frames, before.frames);
+    assert_eq!(after.active, before.active);
+}
+
+#[test]
 fn pause_records_only_running_intervals_and_restart_creates_a_new_frame() {
     let mut tracker = Tracker::new(Snapshot::default());
     let task_id = tracker.add_task("Development").unwrap();

@@ -89,3 +89,30 @@ fn a_failed_save_rolls_back_new_records_and_preserves_the_previous_active_sessio
     assert_eq!(actual.frames, expected.frames);
     assert_eq!(actual.active, expected.active);
 }
+
+#[test]
+fn renamed_task_and_its_tracking_data_survive_reopening() {
+    let database = TestDatabase::new();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let id = tracker.add_task("Development").unwrap();
+    let start: DateTime<Utc> = "2026-11-02T09:00:00Z".parse().unwrap();
+    tracker.start(id, start).unwrap();
+    tracker.pause(start + Duration::minutes(10)).unwrap();
+    tracker.start(id, start + Duration::minutes(15)).unwrap();
+    let mut repository = SqliteRepository::open(&database.path()).unwrap();
+    repository.save(&tracker.into_snapshot()).unwrap();
+    let mut tracker = Tracker::new(repository.load().unwrap());
+    tracker.rename_task(id, "Coding").unwrap();
+    let expected = tracker.into_snapshot();
+    repository.save(&expected).unwrap();
+    drop(repository);
+
+    let actual = SqliteRepository::open(&database.path())
+        .unwrap()
+        .load()
+        .unwrap();
+    assert_eq!(actual.tasks, expected.tasks);
+    assert_eq!(actual.frames, expected.frames);
+    assert_eq!(actual.active, expected.active);
+    assert_eq!(actual.tasks[0].name, "Coding");
+}

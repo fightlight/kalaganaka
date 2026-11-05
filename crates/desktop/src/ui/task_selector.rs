@@ -2,7 +2,7 @@ use super::icons::{self, Icon};
 use crate::app::{App, Message};
 use iced::{
     Color, Element, Fill, Padding,
-    widget::{button, column, container, pick_list, row, space, stack, text, text_input},
+    widget::{button, column, container, row, scrollable, space, stack, text, text_input},
 };
 
 const FIELD_HEIGHT: f32 = 36.0;
@@ -10,16 +10,14 @@ const SPACING: f32 = 8.0;
 const TOGGLE_SIZE: f32 = FIELD_HEIGHT * 2.0 + SPACING;
 
 pub fn view(app: &App) -> Element<'_, Message> {
-    let selector = pick_list(
-        app.snapshot.tasks.clone(),
-        app.selected.clone(),
-        Message::SelectTask,
-    )
-    .placeholder("Select a task")
-    .text_size(16)
-    .text_line_height(1.0)
-    .padding([10, 10])
-    .width(260);
+    let label = app
+        .selected
+        .as_ref()
+        .map_or("Select a task", |task| task.name.as_str());
+    let selector = button(row![text(label).size(16).width(Fill), text("▾")])
+        .padding([10, 10])
+        .width(260)
+        .on_press_maybe(app.ready().then_some(Message::ToggleTaskMenu));
     let add_message =
         (app.ready() && !app.new_task_name.trim().is_empty()).then_some(Message::AddTask);
     let input = text_input("New task name", &app.new_task_name)
@@ -90,4 +88,43 @@ pub fn view(app: &App) -> Element<'_, Message> {
     ]
     .align_y(iced::Bottom)
     .into()
+}
+
+pub fn menu(app: &App) -> Element<'_, Message> {
+    let mut items = column![];
+    for task in &app.snapshot.tasks {
+        let item: Element<'_, Message> = if let Some((id, name)) = &app.editing_task {
+            if *id == task.id {
+                text_input("Task name", name)
+                    .id("task-name-edit")
+                    .on_input_maybe(app.ready().then_some(Message::EditTaskName))
+                    .on_submit_maybe(app.ready().then_some(Message::SaveTaskName))
+                    .padding(10)
+                    .into()
+            } else {
+                task_item(app, task)
+            }
+        } else {
+            task_item(app, task)
+        };
+        items = items.push(item);
+    }
+    container(scrollable(items).height(iced::Length::Shrink))
+        .width(260)
+        .max_height(300)
+        .style(container::rounded_box)
+        .into()
+}
+
+fn task_item<'a>(app: &'a App, task: &'a tracking_core::Task) -> Element<'a, Message> {
+    let select = button(text(&task.name).width(Fill))
+        .width(Fill)
+        .padding(10)
+        .style(button::text)
+        .on_press_maybe(app.ready().then_some(Message::SelectTask(task.clone())));
+    let pencil = button(icons::view(Icon::Pencil, 18.0))
+        .padding(8)
+        .style(button::text)
+        .on_press_maybe(app.ready().then_some(Message::EditTask(task.clone())));
+    row![select, pencil].align_y(iced::Center).into()
 }

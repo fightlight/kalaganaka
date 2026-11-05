@@ -2,6 +2,10 @@
 
 Desktop time tracker built with Rust and iced.
 
+To rename a task, open the task selector and click the pencil beside the task.
+Edit the name and press Enter to save. Press Escape or click outside the field
+to cancel.
+
 ## Install from source
 
 Until application packaging is available, install with Cargo. These instructions
