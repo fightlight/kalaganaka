@@ -14,5 +14,8 @@ rusqlite.workspace = true
 directories.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+iced = { workspace = true, features = ["advanced"] }
+
 [lints]
 workspace = true

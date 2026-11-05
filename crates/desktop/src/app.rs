@@ -8,6 +8,10 @@ use crate::{
     ui,
 };
 
+#[cfg(test)]
+#[path = "app_tests.rs"]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub enum Message {
     Stored(Result<Data, String>),
@@ -127,6 +131,7 @@ impl App {
                 self.busy = false;
                 match result {
                     Ok(Data { snapshot, settings }) => {
+                        let tracking_changed = self.snapshot.active != snapshot.active;
                         self.settings = settings;
                         self.recovered_session = !self.loaded && snapshot.active.is_some();
                         self.loaded = true;
@@ -149,6 +154,10 @@ impl App {
                         }
                         if self.quitting {
                             return iced::exit();
+                        }
+                        if tracking_changed {
+                            self.now = Local::now();
+                            return ui::calendar::scroll_to_now(self);
                         }
                     }
                     Err(error) => {

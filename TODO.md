@@ -1,4 +1,3 @@
-- bug: current time position moves to init state (00:00) after adding new task, start/pause, task selection
 - bug: limit window resizing (to not make it too small)
 - bug: when adding a new task the selector stays on the current task when on pause
 - feat: add time frame manually (check time frame range with existing time frames)

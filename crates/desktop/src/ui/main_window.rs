@@ -37,19 +37,21 @@ pub fn view(app: &App) -> Element<'_, Message> {
     ]
     .spacing(10)
     .align_y(iced::Center);
-    let mut content = column![toolbar].spacing(12);
+    // Keep status messages inside the header so they cannot replace the
+    // calendar's widget state when they appear or disappear.
+    let mut header = column![toolbar].spacing(12);
     if app.busy {
-        content = content.push(text("Saving / loading…"));
+        header = header.push(text("Saving / loading…"));
     }
     if let Some(error) = &app.error {
-        content =
-            content.push(row![text(error), button("Reload").on_press(Message::Retry)].spacing(8));
+        header =
+            header.push(row![text(error), button("Reload").on_press(Message::Retry)].spacing(8));
     }
     if app.recovered_session {
-        content = content.push(text("Recovered a running session. Review it and pause when ready; time since its start is included."));
+        header = header.push(text("Recovered a running session. Review it and pause when ready; time since its start is included."));
     }
     if app.confirm_quit {
-        content = content.push(
+        header = header.push(
             row![
                 text("A task is running."),
                 button("Pause and quit").on_press(Message::ConfirmQuit),
@@ -70,7 +72,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
     if app.ready() && app.selected.is_some() {
         toggle = toggle.on_press(Message::Toggle);
     }
-    content = content
+    let content = column![header]
+        .spacing(12)
         .push(calendar::view(app))
         .push(task_selector::view(app))
         .push(tooltip(
