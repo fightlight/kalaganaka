@@ -23,7 +23,7 @@ pub enum Message {
     OpenSettings,
     SetTheme(ThemePreference),
     SystemThemeChanged(iced::theme::Mode),
-    WindowOpened,
+    WindowOpened(window::Id),
     CloseRequested(window::Id),
     ConfirmQuit,
     CancelQuit,
@@ -86,7 +86,7 @@ impl App {
                 quitting: false,
             },
             Task::batch([
-                open.map(|_| Message::WindowOpened),
+                open.map(Message::WindowOpened),
                 Task::perform(storage::execute(Command::Load), Message::Stored),
             ]),
         )
@@ -178,7 +178,11 @@ impl App {
             Message::AddTask if self.ready() => {
                 return self.store(Command::AddTask(self.new_task_name.clone()));
             }
-            Message::ChangeView(mode) => self.mode = mode,
+            Message::ChangeView(mode) => {
+                self.mode = mode;
+                self.now = Local::now();
+                return ui::calendar::scroll_to_now(self);
+            }
             Message::Navigate(direction) => {
                 let days = if self.mode == ViewMode::Day { 1 } else { 7 };
                 if let Some(date) = self
@@ -186,9 +190,19 @@ impl App {
                     .checked_add_signed(chrono::Duration::days(direction * days))
                 {
                     self.date = date;
+                    self.now = Local::now();
+                    return ui::calendar::scroll_to_now(self);
                 }
             }
-            Message::Today => self.date = Local::now().date_naive(),
+            Message::Today => {
+                self.now = Local::now();
+                self.date = self.now.date_naive();
+                return ui::calendar::scroll_to_now(self);
+            }
+            Message::WindowOpened(id) if id == self.main_window => {
+                self.now = Local::now();
+                return ui::calendar::scroll_to_now(self);
+            }
             Message::OpenStatistics => {
                 if let Some(id) = self.statistics_window {
                     return window::gain_focus(id);
@@ -199,7 +213,7 @@ impl App {
                     ..Default::default()
                 });
                 self.statistics_window = Some(id);
-                return open.map(|_| Message::WindowOpened);
+                return open.map(Message::WindowOpened);
             }
             Message::OpenSettings => {
                 if let Some(id) = self.settings_window {
@@ -211,7 +225,7 @@ impl App {
                     ..Default::default()
                 });
                 self.settings_window = Some(id);
-                return open.map(|_| Message::WindowOpened);
+                return open.map(Message::WindowOpened);
             }
             Message::SetTheme(theme) if self.ready() && theme != self.settings.theme => {
                 return self.store(Command::SetTheme(theme));
