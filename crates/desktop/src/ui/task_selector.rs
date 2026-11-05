@@ -1,9 +1,13 @@
 use super::icons::{self, Icon};
 use crate::app::{App, Message};
 use iced::{
-    Color, Element, Fill,
-    widget::{button, container, pick_list, row, space, text, text_input},
+    Color, Element, Fill, Padding,
+    widget::{button, column, container, pick_list, row, space, stack, text, text_input},
 };
+
+const FIELD_HEIGHT: f32 = 36.0;
+const SPACING: f32 = 8.0;
+const TOGGLE_SIZE: f32 = FIELD_HEIGHT * 2.0 + SPACING;
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let selector = pick_list(
@@ -12,11 +16,40 @@ pub fn view(app: &App) -> Element<'_, Message> {
         Message::SelectTask,
     )
     .placeholder("Select a task")
+    .text_size(16)
+    .text_line_height(1.0)
+    .padding([10, 10])
     .width(260);
-    let mut add = button("Add task…");
-    if app.ready() && !app.new_task_name.trim().is_empty() {
-        add = add.on_press(Message::AddTask);
-    }
+    let add_message =
+        (app.ready() && !app.new_task_name.trim().is_empty()).then_some(Message::AddTask);
+    let input = text_input("New task name", &app.new_task_name)
+        .on_input_maybe(app.ready().then_some(Message::TaskName))
+        .on_submit_maybe(add_message.clone())
+        .size(16)
+        .line_height(1.0)
+        .padding(Padding {
+            top: 10.0,
+            right: 40.0,
+            bottom: 10.0,
+            left: 10.0,
+        });
+    let add = button(container(text("+").size(24)).center_x(Fill).center_y(Fill))
+        .width(32)
+        .height(32)
+        .padding(0)
+        .style(button::text)
+        .on_press_maybe(add_message);
+    let new_task = stack![
+        input,
+        container(add)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::Right)
+            .align_y(iced::Center)
+            .padding(2)
+    ]
+    .width(Fill)
+    .height(FIELD_HEIGHT);
     let running = app.snapshot.active.is_some();
     let (icon, color) = if running {
         (Icon::Pause(Color::BLACK), Color::from_rgb8(67, 181, 111))
@@ -24,12 +57,12 @@ pub fn view(app: &App) -> Element<'_, Message> {
         (Icon::Play(Color::BLACK), Color::from_rgb8(245, 200, 66))
     };
     let mut toggle = button(
-        container(icons::view(icon, 26.0))
+        container(icons::view(icon, 38.0))
             .center_x(Fill)
             .center_y(Fill),
     )
-    .width(44)
-    .height(44)
+    .width(TOGGLE_SIZE)
+    .height(TOGGLE_SIZE)
     .style(move |theme, status| {
         let opacity = match status {
             button::Status::Active => 1.0,
@@ -45,18 +78,16 @@ pub fn view(app: &App) -> Element<'_, Message> {
     if app.ready() && app.selected.is_some() {
         toggle = toggle.on_press(Message::Toggle);
     }
-    row![
-        text_input("New task name", &app.new_task_name)
-            .on_input(Message::TaskName)
-            .on_submit(Message::AddTask)
-            .width(220),
-        add,
-        space().width(Fill),
-        text("Current task"),
-        selector,
+    let controls = row![
+        column![new_task, selector].spacing(SPACING).width(260),
         toggle
     ]
-    .spacing(8)
-    .align_y(iced::Center)
+    .spacing(SPACING)
+    .height(TOGGLE_SIZE);
+    row![
+        space().width(Fill),
+        column![text("Task"), controls].spacing(6)
+    ]
+    .align_y(iced::Bottom)
     .into()
 }
