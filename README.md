@@ -18,6 +18,14 @@ between hours and minutes, and Escape cancels. Running frames can have their
 start edited. Edits retain the existing date and seconds and cannot overlap
 another frame. Invalid or ambiguous local times are rejected.
 
+Use the plus beside Time Frame to add a completed frame. Choose a date and task,
+then enter the local start and end times. Open the task selector to search; use
+the arrow keys and Enter to choose a result, or create a task with the plus when
+there are no matches. Escape closes the open selector or date picker, then the
+window. Tab and Shift+Tab cycle through the task, time inputs, and action buttons.
+The new frame cannot overlap an existing frame or end in the future. After saving,
+the calendar moves to the new frame while the current frame selection stays intact.
+
 ## Install from source
 
 Until application packaging is available, install with Cargo. These instructions

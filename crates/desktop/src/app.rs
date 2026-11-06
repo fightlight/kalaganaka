@@ -23,6 +23,23 @@ pub enum Message {
     FrameHourFocused(bool),
     FrameMinuteFocused(bool),
     SaveFrameTime,
+    OpenAddFrame,
+    AddFrameSearch(String),
+    AddFrameSearchMove(i32),
+    AddFrameSearchSubmit,
+    DismissAddFrameTasks,
+    CreateAddFrameTask,
+    WindowKey(window::Id, Box<Message>),
+    AddFrameTab(bool),
+    AddFrameCheckFocus(bool, usize, bool),
+    AddFrameActivateCheck(usize, bool),
+    AddFrameTask(tracking_core::Task),
+    ToggleAddFrameTasks,
+    ToggleAddFrameDate,
+    AddFrameMonth(i32),
+    AddFrameDate(NaiveDate),
+    AddFrameTime(usize, String),
+    SaveNewFrame,
     Tick,
     Toggle,
     SelectTask(tracking_core::Task),
@@ -96,6 +113,19 @@ pub struct App {
     pub error: Option<String>,
     pub confirm_quit: bool,
     pub recovered_session: bool,
+    pub add_frame_window: Option<window::Id>,
+    pub add_frame_date: NaiveDate,
+    pub add_frame_search: String,
+    pub add_frame_tasks_open: bool,
+    pub add_frame_search_index: usize,
+    pub add_frame_focus: usize,
+    adding_frame_task: bool,
+    pub add_frame_date_open: bool,
+    pub add_frame_month: NaiveDate,
+    pub add_frame_task: Option<tracking_core::Task>,
+    pub add_frame_times: [String; 4],
+    pub add_frame_error: Option<String>,
+    pending_new_frame: Option<DateTime<Utc>>,
     main_window: window::Id,
     statistics_window: Option<window::Id>,
     settings_window: Option<window::Id>,
@@ -137,6 +167,19 @@ impl App {
                 error: None,
                 confirm_quit: false,
                 recovered_session: false,
+                add_frame_window: None,
+                add_frame_date: Local::now().date_naive(),
+                add_frame_search: String::new(),
+                add_frame_tasks_open: false,
+                add_frame_search_index: 0,
+                add_frame_focus: 0,
+                adding_frame_task: false,
+                add_frame_date_open: false,
+                add_frame_month: Local::now().date_naive(),
+                add_frame_task: None,
+                add_frame_times: Default::default(),
+                add_frame_error: None,
+                pending_new_frame: None,
                 main_window,
                 statistics_window: None,
                 settings_window: None,
@@ -154,7 +197,9 @@ impl App {
     }
 
     pub fn title(&self, id: window::Id) -> String {
-        if Some(id) == self.statistics_window {
+        if Some(id) == self.add_frame_window {
+            "Kalaganaka — Add Time Frame".into()
+        } else if Some(id) == self.statistics_window {
             "Kalaganaka — Statistics".into()
         } else if Some(id) == self.settings_window {
             "Kalaganaka — Settings".into()
@@ -172,28 +217,32 @@ impl App {
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick),
             window::close_requests().map(Message::CloseRequested),
             crate::platform::appearance::changes().map(Message::SystemThemeChanged),
-            iced::event::listen_with(|event, _status, _window| match event {
-                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
-                    ..
-                }) => Some(Message::Escape),
-                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown),
-                    ..
-                }) => Some(Message::SearchMove(1)),
-                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp),
-                    ..
-                }) => Some(Message::SearchMove(-1)),
-                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter),
-                    ..
-                }) => Some(Message::MenuSubmit),
-                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),
-                    ..
-                }) => Some(Message::FrameTab),
-                _ => None,
+            iced::event::listen_with(|event, _status, window| {
+                let message = match event {
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        ..
+                    }) => Some(Message::Escape),
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown),
+                        ..
+                    }) => Some(Message::SearchMove(1)),
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp),
+                        ..
+                    }) => Some(Message::SearchMove(-1)),
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter),
+                        ..
+                    }) => Some(Message::MenuSubmit),
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),
+                        modifiers,
+                        ..
+                    }) => Some(Message::AddFrameTab(modifiers.shift())),
+                    _ => None,
+                };
+                message.map(|message| Message::WindowKey(window, Box::new(message)))
             }),
         ])
     }
@@ -244,7 +293,10 @@ impl App {
                                 snapshot.tasks.iter().find(|task| task.id == active.task_id)
                             })
                             .or_else(|| {
-                                if self.adding_task && snapshot.active.is_none() {
+                                if self.adding_task
+                                    && !self.adding_frame_task
+                                    && snapshot.active.is_none()
+                                {
                                     snapshot.tasks.last()
                                 } else {
                                     None
@@ -293,6 +345,11 @@ impl App {
                                 self.editing_frame_field = None;
                             }
                         }
+                        if self.adding_frame_task {
+                            self.add_frame_task = snapshot.tasks.last().cloned();
+                            self.add_frame_tasks_open = false;
+                            self.add_frame_search.clear();
+                        }
                         self.snapshot = snapshot;
                         if self.adding_task {
                             self.new_task_name.clear();
@@ -303,21 +360,258 @@ impl App {
                         if self.quitting {
                             return iced::exit();
                         }
+                        if let Some(start) = self.pending_new_frame.take() {
+                            self.date = start.with_timezone(&Local).date_naive();
+                            let close = self
+                                .add_frame_window
+                                .take()
+                                .map(window::close)
+                                .unwrap_or_else(Task::none);
+                            return Task::batch([
+                                close,
+                                window::gain_focus(self.main_window),
+                                ui::calendar::scroll_to_time(start),
+                            ]);
+                        }
                         if tracking_changed && !self.saving_frame {
                             self.now = Local::now();
                             return ui::calendar::scroll_to_now(self);
                         }
                     }
                     Err(error) => {
-                        self.error = Some(error);
+                        if self.pending_new_frame.take().is_some() || self.adding_frame_task {
+                            self.add_frame_error = Some(error);
+                        } else {
+                            self.error = Some(error);
+                        }
                         self.quitting = false;
                     }
                 }
+                self.adding_frame_task = false;
             }
             Message::SelectFrame(frame) if self.ready() => {
                 self.selected_frame = Some(frame);
                 self.editing_frame_field = None;
                 self.error = None;
+            }
+            Message::OpenAddFrame if self.ready() => {
+                if let Some(id) = self.add_frame_window {
+                    return window::gain_focus(id);
+                }
+                self.add_frame_date = self.date;
+                self.add_frame_month = self.date;
+                self.add_frame_date_open = false;
+                self.add_frame_tasks_open = false;
+                self.add_frame_search.clear();
+                self.add_frame_search_index = 0;
+                self.add_frame_focus = 0;
+                self.add_frame_task = self.selected.clone();
+                self.add_frame_times = Default::default();
+                self.add_frame_error = None;
+                let (id, open) = window::open(window::Settings {
+                    size: iced::Size::new(440.0, 620.0),
+                    exit_on_close_request: false,
+                    ..Default::default()
+                });
+                self.add_frame_window = Some(id);
+                return open.map(Message::WindowOpened);
+            }
+            Message::WindowKey(id, message) => {
+                if id == self.main_window {
+                    return self.update(match *message {
+                        Message::AddFrameTab(_) => Message::FrameTab,
+                        other => other,
+                    });
+                }
+                if Some(id) == self.add_frame_window {
+                    match *message {
+                        Message::Escape if self.add_frame_tasks_open => {
+                            self.add_frame_tasks_open = false
+                        }
+                        Message::Escape if self.add_frame_date_open => {
+                            self.add_frame_date_open = false
+                        }
+                        Message::Escape if !self.busy => {
+                            return self.update(Message::CloseRequested(id));
+                        }
+                        Message::SearchMove(direction) => {
+                            return self.update(Message::AddFrameSearchMove(direction));
+                        }
+                        Message::MenuSubmit if self.add_frame_tasks_open => {
+                            return self.update(Message::AddFrameSearchSubmit);
+                        }
+                        Message::MenuSubmit => {
+                            return iced::widget::operation::is_focused("add-frame-time-0")
+                                .map(|focused| Message::AddFrameActivateCheck(0, focused));
+                        }
+                        Message::AddFrameTab(reverse) => {
+                            return self.update(Message::AddFrameTab(reverse));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Message::AddFrameTab(reverse) if !self.busy => {
+                if self.add_frame_tasks_open {
+                    self.add_frame_tasks_open = false;
+                    self.add_frame_focus = 0;
+                }
+                return iced::widget::operation::is_focused("add-frame-time-0")
+                    .map(move |focused| Message::AddFrameCheckFocus(reverse, 0, focused));
+            }
+            Message::AddFrameCheckFocus(reverse, index, focused) => {
+                if focused {
+                    self.add_frame_focus = index + 1;
+                }
+                if !focused && index < 3 {
+                    let next = index + 1;
+                    return iced::widget::operation::is_focused(format!("add-frame-time-{next}"))
+                        .map(move |focused| Message::AddFrameCheckFocus(reverse, next, focused));
+                }
+                self.add_frame_focus = if reverse {
+                    (self.add_frame_focus + 6) % 7
+                } else {
+                    (self.add_frame_focus + 1) % 7
+                };
+                let id = if (1..=4).contains(&self.add_frame_focus) {
+                    format!("add-frame-time-{}", self.add_frame_focus - 1)
+                } else {
+                    "add-frame-button-focus".to_owned()
+                };
+                return iced::widget::operation::focus(id);
+            }
+            Message::AddFrameActivateCheck(index, focused) => {
+                if !focused && index < 3 {
+                    let next = index + 1;
+                    return iced::widget::operation::is_focused(format!("add-frame-time-{next}"))
+                        .map(move |focused| Message::AddFrameActivateCheck(next, focused));
+                }
+                if !focused {
+                    match self.add_frame_focus {
+                        0 => return self.update(Message::ToggleAddFrameTasks),
+                        5 => return self.update(Message::SaveNewFrame),
+                        6 => {
+                            if let Some(id) = self.add_frame_window {
+                                return self.update(Message::CloseRequested(id));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Message::AddFrameSearch(value) => {
+                self.add_frame_search = value;
+                self.add_frame_search_index = 0;
+            }
+            Message::AddFrameSearchMove(direction) if self.add_frame_tasks_open => {
+                let count = ui::add_frame_window::matching_tasks(self).count();
+                if count > 0 {
+                    self.add_frame_search_index = (self.add_frame_search_index as i32 + direction)
+                        .clamp(0, count as i32 - 1)
+                        as usize;
+                    return iced::widget::operation::snap_to(
+                        "add-frame-results",
+                        iced::widget::scrollable::RelativeOffset {
+                            x: 0.0,
+                            y: self.add_frame_search_index as f32
+                                / count.saturating_sub(1).max(1) as f32,
+                        },
+                    );
+                }
+            }
+            Message::AddFrameSearchSubmit if self.add_frame_tasks_open && self.ready() => {
+                let selected = ui::add_frame_window::matching_tasks(self)
+                    .nth(self.add_frame_search_index)
+                    .cloned();
+                if let Some(task) = selected {
+                    return self.update(Message::AddFrameTask(task));
+                }
+                return self.update(Message::CreateAddFrameTask);
+            }
+            Message::DismissAddFrameTasks => self.add_frame_tasks_open = false,
+            Message::CreateAddFrameTask
+                if self.ready()
+                    && !self.add_frame_search.trim().is_empty()
+                    && ui::add_frame_window::matching_tasks(self).next().is_none() =>
+            {
+                let name = self.add_frame_search.trim().to_owned();
+                self.add_frame_error = None;
+                self.adding_frame_task = true;
+                return self.store(Command::AddTask(name));
+            }
+            Message::AddFrameTask(task) => {
+                self.add_frame_task = Some(task);
+                self.add_frame_tasks_open = false;
+                self.add_frame_search.clear();
+            }
+            Message::ToggleAddFrameTasks => {
+                self.add_frame_focus = 0;
+                self.add_frame_tasks_open = !self.add_frame_tasks_open;
+                self.add_frame_search_index = 0;
+                self.add_frame_date_open = false;
+                if self.add_frame_tasks_open {
+                    return iced::widget::operation::focus("add-frame-search");
+                }
+            }
+            Message::ToggleAddFrameDate => {
+                self.add_frame_date_open = !self.add_frame_date_open;
+                self.add_frame_tasks_open = false;
+            }
+            Message::AddFrameMonth(direction) => {
+                let months = chrono::Months::new(direction.unsigned_abs());
+                let next = if direction < 0 {
+                    self.add_frame_month.checked_sub_months(months)
+                } else {
+                    self.add_frame_month.checked_add_months(months)
+                };
+                if let Some(date) = next {
+                    self.add_frame_month = date;
+                }
+            }
+            Message::AddFrameDate(date) => {
+                self.add_frame_date = date;
+                self.add_frame_month = date;
+                self.add_frame_date_open = false;
+            }
+            Message::AddFrameTime(index, value) if index < 4 => {
+                let max = if index % 2 == 0 { 23 } else { 59 };
+                if value.is_empty()
+                    || (value.len() <= 2
+                        && value.bytes().all(|b| b.is_ascii_digit())
+                        && value.parse::<u8>().is_ok_and(|n| n <= max))
+                {
+                    self.add_frame_times[index] = value;
+                }
+            }
+            Message::SaveNewFrame if self.ready() && self.add_frame_window.is_some() => {
+                let Some(task_id) = self.add_frame_task.as_ref().map(|task| task.id) else {
+                    self.add_frame_error = Some("Select a task.".into());
+                    return Task::none();
+                };
+                let parse = |hour: &str, minute: &str| {
+                    NaiveTime::from_hms_opt(hour.parse().ok()?, minute.parse().ok()?, 0)
+                        .and_then(|time| {
+                            Local
+                                .from_local_datetime(&self.add_frame_date.and_time(time))
+                                .single()
+                        })
+                        .map(|time| time.with_timezone(&Utc))
+                };
+                let Some((start, end)) = parse(&self.add_frame_times[0], &self.add_frame_times[1])
+                    .zip(parse(&self.add_frame_times[2], &self.add_frame_times[3]))
+                else {
+                    self.add_frame_error =
+                        Some("Enter valid, unambiguous local times in HH:MM format.".into());
+                    return Task::none();
+                };
+                self.add_frame_error = None;
+                self.pending_new_frame = Some(start);
+                return self.store(Command::AddFrame {
+                    task_id,
+                    start,
+                    end,
+                    now: Utc::now(),
+                });
             }
             Message::EditFrameTime(field) if self.ready() => {
                 if let Some((_, start, end)) = self.frame_details() {
@@ -639,6 +933,12 @@ impl App {
                         return iced::exit();
                     }
                 } else {
+                    if Some(id) == self.add_frame_window {
+                        if self.pending_new_frame.is_some() {
+                            return Task::none();
+                        }
+                        self.add_frame_window = None;
+                    }
                     if Some(id) == self.statistics_window {
                         self.statistics_window = None;
                     }
@@ -681,7 +981,9 @@ impl App {
     }
 
     pub fn view(&self, id: window::Id) -> Element<'_, Message> {
-        if Some(id) == self.statistics_window {
+        if Some(id) == self.add_frame_window {
+            ui::add_frame_window::view(self)
+        } else if Some(id) == self.statistics_window {
             ui::statistics_window::view(self)
         } else if Some(id) == self.settings_window {
             ui::settings_window::view(self)

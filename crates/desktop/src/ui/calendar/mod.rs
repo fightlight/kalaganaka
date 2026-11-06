@@ -14,12 +14,16 @@ pub fn scroll_to_now(app: &App) -> Task<Message> {
         return Task::none();
     }
 
+    scroll_to_time(app.now.with_timezone(&chrono::Utc))
+}
+
+pub fn scroll_to_time(time: chrono::DateTime<chrono::Utc>) -> Task<Message> {
     operation::scroll_to(
         SCROLL_ID,
         scrollable::AbsoluteOffset {
             x: 0.0,
             // Keep the current-time marker below the top edge of the viewport.
-            y: layout::y(layout::minute(app.now.with_timezone(&chrono::Utc))) - layout::HEADER,
+            y: layout::y(layout::minute(time)) - layout::HEADER,
         },
     )
 }

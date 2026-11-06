@@ -17,6 +17,7 @@ pub enum Icon {
     Statistics,
     Pencil,
     Check,
+    Add,
 }
 
 pub fn view<'a, Message: 'a>(icon: Icon, size: f32) -> Element<'a, Message> {
@@ -45,10 +46,22 @@ impl<Message> canvas::Program<Message> for Icon {
             | Self::Settings
             | Self::Statistics
             | Self::Pencil
-            | Self::Check => palette.background.base.text,
+            | Self::Check
+            | Self::Add => palette.background.base.text,
         };
         let stroke = Stroke::default().with_color(colour).with_width(1.8);
         match self {
+            Self::Add => {
+                frame.stroke(&Path::circle(Point::new(12.0, 12.0), 9.0), stroke);
+                frame.stroke(
+                    &Path::line(Point::new(7.0, 12.0), Point::new(17.0, 12.0)),
+                    stroke,
+                );
+                frame.stroke(
+                    &Path::line(Point::new(12.0, 7.0), Point::new(12.0, 17.0)),
+                    stroke,
+                );
+            }
             Self::Play(_) => {
                 let triangle = Path::new(|path| {
                     path.move_to(Point::new(7.0, 3.0));

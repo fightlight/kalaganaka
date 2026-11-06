@@ -1,6 +1,5 @@
 - bug: limit window resizing (to not make it too small)
 - feat: pause current task on screen lock (settings' checkbox, default: on)
 - feat: task removal (with the frames)
-- feat: add time frame manually (check time frame range with existing time frames)
 - feat: tags for frames
 - feat: jira sync

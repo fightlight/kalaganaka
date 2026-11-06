@@ -24,11 +24,15 @@ fn elapsed(minutes: i64) -> String {
 }
 
 pub fn view(app: &App) -> Element<'_, Message> {
-    let mut content = column![text("Time Frame").font(iced::Font {
+    let heading = text("Time Frame").font(iced::Font {
         weight: iced::font::Weight::Bold,
         ..iced::Font::default()
-    })]
-    .spacing(3);
+    });
+    let add = button(icons::view(Icon::Add, 18.0))
+        .padding(2)
+        .style(button::text)
+        .on_press_maybe(app.ready().then_some(Message::OpenAddFrame));
+    let mut content = column![row![heading, add].spacing(6).align_y(iced::Center)].spacing(3);
     if let Some((task_id, start, end)) = app.frame_details() {
         if let Some(task) = app.snapshot.tasks.iter().find(|task| task.id == task_id) {
             let colour = Color::from_rgb8(
@@ -49,6 +53,10 @@ pub fn view(app: &App) -> Element<'_, Message> {
             content = content.push(text(format!(
                 "Spent: {}",
                 elapsed((until - start).num_minutes())
+            )));
+            content = content.push(text(format!(
+                "Date: {}",
+                start.with_timezone(&Local).format("%d %B %Y")
             )));
             content = content.push(time_row(app, "Start:", FrameField::Start, Some(start)));
             content = content.push(time_row(app, "End:", FrameField::End, end));

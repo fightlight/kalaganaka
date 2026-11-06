@@ -350,3 +350,59 @@ fn frame_edits_validate_ranges_overlaps_and_stale_sessions() {
         .unwrap();
     assert_eq!(tracker.into_snapshot().frames[0].ended_at, active_start);
 }
+
+#[test]
+fn manually_added_frames_validate_ranges_and_allow_adjacent_intervals() {
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = time("2026-11-02T09:00:00Z");
+    let now = start + Duration::hours(4);
+    assert!(matches!(
+        tracker.add_frame(Uuid::new_v4(), start, now, now),
+        Err(TrackingError::UnknownTask)
+    ));
+    assert!(matches!(
+        tracker.add_frame(task, start, start, now),
+        Err(TrackingError::InvalidFrameRange)
+    ));
+    assert!(matches!(
+        tracker.add_frame(task, start, now + Duration::seconds(1), now),
+        Err(TrackingError::InvalidFrameRange)
+    ));
+    tracker
+        .add_frame(task, start, start + Duration::hours(1), now)
+        .unwrap();
+    assert!(matches!(
+        tracker.add_frame(
+            task,
+            start + Duration::minutes(30),
+            start + Duration::hours(2),
+            now
+        ),
+        Err(TrackingError::OverlappingFrame)
+    ));
+    tracker
+        .add_frame(
+            task,
+            start + Duration::hours(1),
+            start + Duration::hours(2),
+            now,
+        )
+        .unwrap();
+    tracker.start(task, start + Duration::hours(3)).unwrap();
+    assert!(matches!(
+        tracker.add_frame(task, start + Duration::hours(2), now, now),
+        Err(TrackingError::OverlappingFrame)
+    ));
+    tracker
+        .add_frame(
+            task,
+            start + Duration::hours(2),
+            start + Duration::hours(3),
+            now,
+        )
+        .unwrap();
+    let snapshot = tracker.into_snapshot();
+    assert_eq!(snapshot.frames.len(), 3);
+    assert!(snapshot.frames.iter().all(|frame| frame.task_id == task));
+}

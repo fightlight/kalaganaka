@@ -147,6 +147,41 @@ impl Tracker {
         Ok(())
     }
 
+    pub fn add_frame(
+        &mut self,
+        task_id: Uuid,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<(), TrackingError> {
+        if !self.snapshot.tasks.iter().any(|task| task.id == task_id) {
+            return Err(TrackingError::UnknownTask);
+        }
+        if start >= end || end > now {
+            return Err(TrackingError::InvalidFrameRange);
+        }
+        if self
+            .snapshot
+            .frames
+            .iter()
+            .any(|frame| start < frame.ended_at && frame.started_at < end)
+            || self
+                .snapshot
+                .active
+                .as_ref()
+                .is_some_and(|active| start < now && active.started_at < end)
+        {
+            return Err(TrackingError::OverlappingFrame);
+        }
+        self.snapshot.frames.push(TimeFrame {
+            id: Uuid::new_v4(),
+            task_id,
+            started_at: start,
+            ended_at: end,
+        });
+        Ok(())
+    }
+
     pub fn start(&mut self, task_id: Uuid, now: DateTime<Utc>) -> Result<(), TrackingError> {
         if !self.snapshot.tasks.iter().any(|task| task.id == task_id) {
             return Err(TrackingError::UnknownTask);

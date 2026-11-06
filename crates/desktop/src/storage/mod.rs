@@ -20,6 +20,12 @@ pub enum Command {
     RenameTask(Uuid, String),
     Start(Uuid, DateTime<Utc>),
     Pause(DateTime<Utc>),
+    AddFrame {
+        task_id: Uuid,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        now: DateTime<Utc>,
+    },
     EditFrame {
         id: Option<Uuid>,
         expected_active: Option<(Uuid, DateTime<Utc>)>,
@@ -67,6 +73,14 @@ pub async fn execute(command: Command) -> Result<Data, String> {
                         tracker.start(id, now).map_err(|error| error.to_string())?
                     }
                     Command::Pause(now) => tracker.pause(now).map_err(|error| error.to_string())?,
+                    Command::AddFrame {
+                        task_id,
+                        start,
+                        end,
+                        now,
+                    } => tracker
+                        .add_frame(task_id, start, end, now)
+                        .map_err(|error| error.to_string())?,
                     Command::EditFrame {
                         id,
                         expected_active,

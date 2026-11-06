@@ -1,3 +1,4 @@
+pub mod add_frame_window;
 pub mod calendar;
 mod icons;
 pub mod main_window;

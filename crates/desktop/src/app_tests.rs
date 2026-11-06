@@ -425,3 +425,77 @@ fn initial_load_selects_latest_completed_frame() {
     let _ = app.update(stored(snapshot));
     assert_eq!(app.selected_frame, Some(FrameSelection::Completed(id)));
 }
+
+#[test]
+fn add_frame_success_moves_calendar_without_changing_selection() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let now = Utc::now();
+    let old_start = now - chrono::Duration::days(3);
+    tracker
+        .add_frame(
+            task,
+            old_start,
+            old_start + chrono::Duration::minutes(5),
+            now,
+        )
+        .unwrap();
+    app.snapshot = tracker.into_snapshot();
+    let old_selection = FrameSelection::Completed(app.snapshot.frames[0].id);
+    app.selected_frame = Some(old_selection);
+    let _ = app.update(Message::OpenAddFrame);
+    let new_start = now - chrono::Duration::days(1);
+    app.pending_new_frame = Some(new_start);
+    let mut tracker = Tracker::new(app.snapshot.clone());
+    tracker
+        .add_frame(
+            task,
+            new_start,
+            new_start + chrono::Duration::minutes(10),
+            now,
+        )
+        .unwrap();
+    let _ = app.update(stored(tracker.into_snapshot()));
+    assert_eq!(app.selected_frame, Some(old_selection));
+    assert_eq!(app.date, new_start.with_timezone(&Local).date_naive());
+    assert!(app.add_frame_window.is_none());
+}
+
+#[test]
+fn popup_task_creation_preserves_main_selection_and_reports_failures() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let original = tracker.add_task("Original").unwrap();
+    app.snapshot = tracker.into_snapshot();
+    app.selected = Some(app.snapshot.tasks[0].clone());
+    let _ = app.update(Message::OpenAddFrame);
+    let _ = app.update(Message::AddFrameSearch("New".into()));
+    let _ = app.update(Message::CreateAddFrameTask);
+    let _ = app.update(Message::Stored(Err("Save failed".into())));
+    assert_eq!(app.add_frame_error.as_deref(), Some("Save failed"));
+    assert_eq!(app.add_frame_search, "New");
+    let _ = app.update(Message::CreateAddFrameTask);
+    let mut tracker = Tracker::new(app.snapshot.clone());
+    let new = tracker.add_task("New").unwrap();
+    let _ = app.update(stored(tracker.into_snapshot()));
+    assert_eq!(app.selected.as_ref().unwrap().id, original);
+    assert_eq!(app.add_frame_task.as_ref().unwrap().id, new);
+}
+
+#[test]
+fn popup_escape_closes_open_controls_before_window() {
+    let mut app = ready_app();
+    let _ = app.update(Message::OpenAddFrame);
+    let id = app.add_frame_window.unwrap();
+    let _ = app.update(Message::ToggleAddFrameDate);
+    let _ = app.update(Message::WindowKey(id, Box::new(Message::Escape)));
+    assert!(!app.add_frame_date_open);
+    assert!(app.add_frame_window.is_some());
+    let _ = app.update(Message::ToggleAddFrameTasks);
+    let _ = app.update(Message::WindowKey(id, Box::new(Message::Escape)));
+    assert!(!app.add_frame_tasks_open);
+    assert!(app.add_frame_window.is_some());
+    let _ = app.update(Message::WindowKey(id, Box::new(Message::Escape)));
+    assert!(app.add_frame_window.is_none());
+}
