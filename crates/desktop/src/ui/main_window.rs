@@ -84,21 +84,21 @@ pub fn view(app: &App) -> Element<'_, Message> {
     ]
     .spacing(10)
     .align_y(iced::Center);
-    // Keep status messages inside the header so they cannot replace the
-    // calendar's widget state when they appear or disappear.
-    let mut header = column![toolbar].spacing(12);
+    // Keep the status container in the tree even when it is empty, so the
+    // calendar and controls retain their widget state.
+    let mut status = column![].spacing(12);
     if app.busy {
-        header = header.push(text("Saving / loading…"));
+        status = status.push(text("Saving / loading…"));
     }
     if let Some(error) = &app.error {
-        header =
-            header.push(row![text(error), button("Reload").on_press(Message::Retry)].spacing(8));
+        status =
+            status.push(row![text(error), button("Reload").on_press(Message::Retry)].spacing(8));
     }
     if app.recovered_session {
-        header = header.push(text("Recovered a running session. Review it and pause when ready; time since its start is included."));
+        status = status.push(text("Recovered a running session. Review it and pause when ready; time since its start is included."));
     }
     if app.confirm_quit {
-        header = header.push(
+        status = status.push(
             row![
                 text("A task is running."),
                 button("Pause and quit").on_press(Message::ConfirmQuit),
@@ -107,10 +107,16 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .spacing(12),
         );
     }
-    let content = column![header]
+    let has_status = app.busy || app.error.is_some() || app.recovered_session || app.confirm_quit;
+    let details = column![
+        status,
+        row![time_frame::view(app), task_selector::view(app)].align_y(iced::Top)
+    ]
+    .spacing(if has_status { 12 } else { 0 });
+    let content = column![toolbar]
         .spacing(12)
         .push(calendar::view(app))
-        .push(row![time_frame::view(app), task_selector::view(app)].align_y(iced::Top));
+        .push(details);
     let content = container(content).padding(18).width(Fill).height(Fill);
     let mut layers = stack![content];
     if !app.new_task_name.trim().is_empty() && !app.task_menu_open {

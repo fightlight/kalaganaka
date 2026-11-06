@@ -24,7 +24,11 @@ fn elapsed(minutes: i64) -> String {
 }
 
 pub fn view(app: &App) -> Element<'_, Message> {
-    let mut content = column![text("Time Frame")].spacing(3);
+    let mut content = column![text("Time Frame").font(iced::Font {
+        weight: iced::font::Weight::Bold,
+        ..iced::Font::default()
+    })]
+    .spacing(3);
     if let Some((task_id, start, end)) = app.frame_details() {
         if let Some(task) = app.snapshot.tasks.iter().find(|task| task.id == task_id) {
             let colour = Color::from_rgb8(

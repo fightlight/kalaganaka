@@ -66,7 +66,14 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .height(TOGGLE_SIZE);
     row![
         space().width(Fill),
-        column![text("Task"), controls].spacing(6)
+        column![
+            text("Task").font(iced::Font {
+                weight: iced::font::Weight::Bold,
+                ..iced::Font::default()
+            }),
+            controls
+        ]
+        .spacing(6)
     ]
     .align_y(iced::Bottom)
     .into()
