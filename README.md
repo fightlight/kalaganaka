@@ -2,13 +2,14 @@
 
 Desktop time tracker built with Rust and iced.
 
-Open the task selector and type to search task names. Settings controls how
-many matching tasks appear (1–30, default 5); press Enter to save a typed limit
-or use the arrows. The selector shows the newest matching tasks in creation
-order.
+Type in the task name field to search tasks. Use the arrow keys and Enter to
+select a match, or press Enter to add the entered name if there are no matches.
+Escape or a click outside dismisses the results. Settings controls how many
+tasks appear (1–30, default 5); press Enter to save a typed limit or use the
+arrows. Results show the newest matching tasks in creation order.
 
-To rename a task, open the task selector and click the pencil beside the task.
-Edit the name and press Enter to save. Press Escape or click outside the field
+To rename a task, click the pencil beside it in either selector.
+Edit the name and press Enter to save. Press Escape or click outside the selector
 to cancel.
 
 ## Install from source

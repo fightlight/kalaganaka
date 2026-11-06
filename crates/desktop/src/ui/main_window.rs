@@ -113,11 +113,40 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .push(task_selector::view(app));
     let content = container(content).padding(18).width(Fill).height(Fill);
     let mut layers = stack![content];
+    if !app.new_task_name.trim().is_empty() && !app.task_menu_open {
+        let dismiss =
+            || mouse_area(space().width(Fill).height(Fill)).on_press(Message::DismissSearch);
+        layers = layers.push(
+            column![
+                dismiss(),
+                row![
+                    dismiss(),
+                    space().width(260),
+                    container(dismiss()).width(106)
+                ]
+                .height(36),
+                container(dismiss()).height(62),
+            ]
+            .width(Fill)
+            .height(Fill),
+        );
+        layers = layers.push(
+            container(task_selector::search_results(app))
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::Right)
+                .align_y(iced::Bottom)
+                .padding(iced::Padding {
+                    top: 18.0,
+                    right: 106.0,
+                    bottom: 106.0,
+                    left: 18.0,
+                }),
+        );
+    }
     if app.task_menu_open {
-        let mut dismiss = mouse_area(space().width(Fill).height(Fill));
-        if app.editing_task.is_some() && app.ready() {
-            dismiss = dismiss.on_press(Message::CancelTaskEdit);
-        }
+        let dismiss =
+            mouse_area(space().width(Fill).height(Fill)).on_press(Message::DismissTaskMenu);
         layers = layers.push(dismiss);
         layers = layers.push(
             container(task_selector::menu(app))

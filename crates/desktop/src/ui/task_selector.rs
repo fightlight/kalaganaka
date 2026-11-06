@@ -1,8 +1,8 @@
 use super::icons::{self, Icon};
 use crate::app::{App, Message};
 use iced::{
-    Color, Element, Fill, Padding,
-    widget::{button, column, container, row, scrollable, space, stack, text, text_input},
+    Color, Element, Fill,
+    widget::{button, column, container, row, scrollable, space, text, text_input},
 };
 
 const FIELD_HEIGHT: f32 = 36.0;
@@ -18,36 +18,13 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .padding([10, 10])
         .width(260)
         .on_press_maybe(app.ready().then_some(Message::ToggleTaskMenu));
-    let add_message =
-        (app.ready() && !app.new_task_name.trim().is_empty()).then_some(Message::AddTask);
-    let input = text_input("New task name", &app.new_task_name)
+    let new_task = text_input("Enter task name", &app.new_task_name)
         .on_input_maybe(app.ready().then_some(Message::TaskName))
-        .on_submit_maybe(add_message.clone())
+        .on_submit_maybe(app.ready().then_some(Message::SearchSubmit))
         .size(16)
         .line_height(1.0)
-        .padding(Padding {
-            top: 10.0,
-            right: 40.0,
-            bottom: 10.0,
-            left: 10.0,
-        });
-    let add = button(container(text("+").size(24)).center_x(Fill).center_y(Fill))
-        .width(32)
-        .height(32)
-        .padding(0)
-        .style(button::text)
-        .on_press_maybe(add_message);
-    let new_task = stack![
-        input,
-        container(add)
-            .width(Fill)
-            .height(Fill)
-            .align_x(iced::Right)
-            .align_y(iced::Center)
-            .padding(2)
-    ]
-    .width(Fill)
-    .height(FIELD_HEIGHT);
+        .padding(10)
+        .width(Fill);
     let running = app.snapshot.active.is_some();
     let (icon, color) = if running {
         (Icon::Pause(Color::BLACK), Color::from_rgb8(67, 181, 111))
@@ -97,49 +74,11 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
 pub fn menu(app: &App) -> Element<'_, Message> {
     let mut items = column![];
-    let matches = matching_tasks(app);
-    let mut found = false;
-    for task in matches {
-        found = true;
-        let item: Element<'_, Message> = if let Some((id, name)) = &app.editing_task {
-            if *id == task.id {
-                text_input("Task name", name)
-                    .id("task-name-edit")
-                    .on_input_maybe(app.ready().then_some(Message::EditTaskName))
-                    .on_submit_maybe(app.ready().then_some(Message::SaveTaskName))
-                    .padding(10)
-                    .into()
-            } else {
-                task_item(app, task)
-            }
-        } else {
-            task_item(app, task)
-        };
+    for (index, task) in matching_tasks(app).enumerate() {
+        let item = editable_task_item(app, task, index == app.search_index);
         items = items.push(item);
     }
-    if !found {
-        items = items.push(container(text("No matching tasks")).padding(10));
-    }
-    let search_input = text_input("Search tasks", &app.task_search)
-        .id("task-search")
-        .on_input_maybe(app.ready().then_some(Message::SearchTasks))
-        .padding(10);
-    let search: Element<'_, Message> = if app.editing_task.is_some() && app.ready() {
-        button(if app.task_search.is_empty() {
-            "Search tasks"
-        } else {
-            &app.task_search
-        })
-        .width(Fill)
-        .padding(10)
-        .style(button::text)
-        .on_press(Message::FocusTaskSearch)
-        .into()
-    } else {
-        search_input.into()
-    };
     container(column![
-        search,
         scrollable(items)
             .id("task-results")
             .height(iced::Length::Shrink)
@@ -150,8 +89,8 @@ pub fn menu(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-fn matching_tasks(app: &App) -> impl Iterator<Item = &tracking_core::Task> {
-    let query = app.task_search.to_lowercase();
+pub fn matching_tasks(app: &App) -> impl Iterator<Item = &tracking_core::Task> {
+    let query = app.new_task_name.trim().to_lowercase();
     app.snapshot
         .tasks
         .iter()
@@ -163,12 +102,58 @@ fn matching_tasks(app: &App) -> impl Iterator<Item = &tracking_core::Task> {
         .rev()
 }
 
-fn task_item<'a>(app: &'a App, task: &'a tracking_core::Task) -> Element<'a, Message> {
-    let select = button(text(&task.name).width(Fill))
+pub fn search_results(app: &App) -> Element<'_, Message> {
+    let matches: Vec<_> = matching_tasks(app).collect();
+    let mut items = column![];
+    if matches.is_empty() {
+        items = items.push(
+            button(row![text(app.new_task_name.trim()).width(Fill), text("+")])
+                .width(Fill)
+                .padding(10)
+                .on_press_maybe(app.ready().then_some(Message::AddTask)),
+        );
+    } else {
+        for (index, task) in matches.into_iter().enumerate() {
+            items = items.push(editable_task_item(app, task, index == app.search_index));
+        }
+    }
+    container(scrollable(items).height(iced::Length::Shrink))
+        .width(260)
+        .max_height(300)
+        .style(container::rounded_box)
+        .into()
+}
+
+fn editable_task_item<'a>(
+    app: &'a App,
+    task: &'a tracking_core::Task,
+    highlighted: bool,
+) -> Element<'a, Message> {
+    if let Some((id, name)) = &app.editing_task {
+        if *id == task.id {
+            return text_input("Task name", name)
+                .id("task-name-edit")
+                .on_input_maybe(app.ready().then_some(Message::EditTaskName))
+                .on_submit_maybe(app.ready().then_some(Message::SaveTaskName))
+                .padding(10)
+                .into();
+        }
+    }
+    task_item(app, task, highlighted)
+}
+
+fn task_item<'a>(
+    app: &'a App,
+    task: &'a tracking_core::Task,
+    highlighted: bool,
+) -> Element<'a, Message> {
+    let mut select = button(text(&task.name).width(Fill))
         .width(Fill)
         .padding(10)
-        .style(button::text)
         .on_press_maybe(app.ready().then_some(Message::SelectTask(task.clone())));
+    if !highlighted {
+        select = select.style(button::text);
+    }
     let pencil = button(icons::view(Icon::Pencil, 18.0))
         .padding(8)
         .style(button::text)
@@ -198,11 +183,11 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(names(&app), ["Again", "Delta", "Last"]);
-        app.task_search = "A".into();
+        app.new_task_name = "A".into();
         assert_eq!(names(&app), ["Again", "Delta", "Last"]);
-        app.task_search = "Ga".into();
+        app.new_task_name = "Ga".into();
         assert_eq!(names(&app), ["Gamma", "Again"]);
-        app.task_search = "missing".into();
+        app.new_task_name = "missing".into();
         assert!(names(&app).is_empty());
     }
 }

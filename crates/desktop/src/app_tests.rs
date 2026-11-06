@@ -172,7 +172,7 @@ fn editing_can_be_cancelled_and_failed_saves_keep_the_draft() {
     let _ = app.update(Message::ToggleTaskMenu);
     let _ = app.update(Message::EditTask(task.clone()));
     let _ = app.update(Message::EditTaskName("Draft".into()));
-    let _ = app.update(Message::CancelTaskEdit);
+    let _ = app.update(Message::Escape);
     assert!(app.editing_task.is_none());
     assert_eq!(app.snapshot.tasks[0].name, "Development");
 
@@ -205,8 +205,7 @@ fn calendar_state_survives_task_menu_and_editing() {
     let _ = app.update(Message::EditTask(app.snapshot.tasks[0].clone()));
     tree.diff(ui::main_window::view(&app).as_widget());
     assert_eq!(calendar_state(&tree, tag), Some(original));
-    let _ = app.update(Message::CancelTaskEdit);
-    let _ = app.update(Message::ToggleTaskMenu);
+    let _ = app.update(Message::Escape);
     tree.diff(ui::main_window::view(&app).as_widget());
     assert_eq!(calendar_state(&tree, tag), Some(original));
 }
@@ -241,25 +240,14 @@ fn selector_scroll_state_survives_edit_save_and_cancel() {
     tree.diff(ui::main_window::view(&app).as_widget());
     assert_eq!(scroll_state(&tree), Some(original));
     let _ = app.update(Message::EditTask(app.snapshot.tasks[15].clone()));
-    let _ = app.update(Message::CancelTaskEdit);
-    tree.diff(ui::main_window::view(&app).as_widget());
-    assert_eq!(scroll_state(&tree), Some(original));
+    let _ = app.update(Message::Escape);
+    assert!(!app.task_menu_open);
 }
 
 #[test]
 fn selector_search_filters_all_tasks_before_applying_the_limit() {
     fn result_count(app: &App) -> usize {
-        fn find(tree: &Tree, tag: tree::Tag) -> Option<&Tree> {
-            if tree.tag == tag {
-                return Some(tree);
-            }
-            tree.children.iter().find_map(|child| find(child, tag))
-        }
-        let scrollable: Element<'_, Message> =
-            iced::widget::scrollable(iced::widget::text("")).into();
-        let tag = Tree::new(scrollable.as_widget()).tag;
-        let menu = Tree::new(ui::task_selector::menu(app).as_widget());
-        find(&menu, tag).unwrap().children[0].children.len()
+        ui::task_selector::matching_tasks(app).count()
     }
 
     let mut app = ready_app();
@@ -273,12 +261,12 @@ fn selector_search_filters_all_tasks_before_applying_the_limit() {
     app.snapshot = tracker.into_snapshot();
     app.settings.task_limit = 3;
     assert_eq!(result_count(&app), 3);
-    let _ = app.update(Message::SearchTasks("NEEDLE".into()));
+    let _ = app.update(Message::TaskName("NEEDLE".into()));
     assert_eq!(result_count(&app), 3);
     app.settings.task_limit = 20;
     assert_eq!(result_count(&app), 4);
     let _ = app.update(Message::ToggleTaskMenu);
-    assert!(app.task_search.is_empty());
+    assert!(app.new_task_name.is_empty());
 }
 
 #[test]
@@ -304,4 +292,34 @@ fn task_limit_input_rejects_invalid_characters_and_values() {
     let _ = app.update(Message::AdjustTaskLimit(1));
     assert_eq!(app.task_limit_input, "30");
     assert!(!app.busy);
+}
+
+#[test]
+fn search_and_menu_keyboard_selection_and_dismissal() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    tracker.add_task("Alpha").unwrap();
+    tracker.add_task("Alpine").unwrap();
+    app.snapshot = tracker.into_snapshot();
+    let _ = app.update(Message::TaskName("Al".into()));
+    let _ = app.update(Message::SearchMove(1));
+    assert_eq!(app.search_index, 1);
+    let _ = app.update(Message::SearchSubmit);
+    assert_eq!(app.selected.as_ref().unwrap().name, "Alpine");
+    assert!(app.new_task_name.is_empty());
+    let _ = app.update(Message::ToggleTaskMenu);
+    let _ = app.update(Message::SearchMove(1));
+    let _ = app.update(Message::SearchMove(-1));
+    let _ = app.update(Message::MenuSubmit);
+    assert_eq!(app.selected.as_ref().unwrap().name, "Alpha");
+    assert!(!app.task_menu_open);
+    let _ = app.update(Message::TaskName("unknown".into()));
+    let _ = app.update(Message::DismissSearch);
+    assert!(app.new_task_name.is_empty());
+    let _ = app.update(Message::ToggleTaskMenu);
+    let _ = app.update(Message::DismissTaskMenu);
+    assert!(!app.task_menu_open);
+    let _ = app.update(Message::TaskName("test".into()));
+    let _ = app.update(Message::Escape);
+    assert!(app.new_task_name.is_empty());
 }

@@ -19,12 +19,15 @@ pub enum Message {
     Toggle,
     SelectTask(tracking_core::Task),
     ToggleTaskMenu,
-    SearchTasks(String),
-    FocusTaskSearch,
+    SearchMove(i32),
+    SearchSubmit,
+    MenuSubmit,
+    DismissSearch,
+    DismissTaskMenu,
+    Escape,
     EditTask(tracking_core::Task),
     EditTaskName(String),
     SaveTaskName,
-    CancelTaskEdit,
     TaskName(String),
     AddTask,
     ChangeView(ViewMode),
@@ -56,7 +59,7 @@ pub struct App {
     pub selected: Option<tracking_core::Task>,
     pub new_task_name: String,
     pub task_menu_open: bool,
-    pub task_search: String,
+    pub search_index: usize,
     pub task_limit_input: String,
     pub task_limit_error: bool,
     pub editing_task: Option<(uuid::Uuid, String)>,
@@ -92,7 +95,7 @@ impl App {
                 selected: None,
                 new_task_name: String::new(),
                 task_menu_open: false,
-                task_search: String::new(),
+                search_index: 0,
                 task_limit_input: Settings::default().task_limit.to_string(),
                 task_limit_error: false,
                 editing_task: None,
@@ -143,7 +146,19 @@ impl App {
                 iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                     key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                     ..
-                }) => Some(Message::CancelTaskEdit),
+                }) => Some(Message::Escape),
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown),
+                    ..
+                }) => Some(Message::SearchMove(1)),
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp),
+                    ..
+                }) => Some(Message::SearchMove(-1)),
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter),
+                    ..
+                }) => Some(Message::MenuSubmit),
                 _ => None,
             }),
         ])
@@ -226,7 +241,7 @@ impl App {
             }
             Message::SelectTask(task) if self.ready() => {
                 self.task_menu_open = false;
-                self.task_search.clear();
+                self.new_task_name.clear();
                 self.editing_task = None;
                 if self.snapshot.active.is_some() {
                     return self.store(Command::Start(task.id, Utc::now()));
@@ -235,23 +250,60 @@ impl App {
             }
             Message::ToggleTaskMenu if self.ready() => {
                 self.task_menu_open = !self.task_menu_open;
+                self.search_index = 0;
                 self.editing_task = None;
-                self.task_search.clear();
-                if self.task_menu_open {
-                    return iced::widget::operation::focus("task-search");
+                self.new_task_name.clear();
+            }
+            Message::SearchMove(direction)
+                if self.ready()
+                    && (self.task_menu_open || !self.new_task_name.trim().is_empty())
+                    && self.editing_task.is_none() =>
+            {
+                let count = ui::task_selector::matching_tasks(self).count();
+                if count > 0 {
+                    self.search_index =
+                        (self.search_index as i32 + direction).clamp(0, count as i32 - 1) as usize;
                 }
             }
-            Message::SearchTasks(query) => {
-                self.task_search = query;
-                self.editing_task = None;
-                return iced::widget::operation::snap_to(
-                    "task-results",
-                    iced::widget::scrollable::RelativeOffset::START,
-                );
+            Message::MenuSubmit
+                if self.ready() && self.task_menu_open && self.editing_task.is_none() =>
+            {
+                let selected = ui::task_selector::matching_tasks(self)
+                    .nth(self.search_index)
+                    .cloned();
+                if let Some(task) = selected {
+                    return self.update(Message::SelectTask(task));
+                }
             }
-            Message::FocusTaskSearch if self.ready() => {
+            Message::SearchSubmit
+                if self.ready()
+                    && self.editing_task.is_none()
+                    && !self.new_task_name.trim().is_empty() =>
+            {
+                let selected = ui::task_selector::matching_tasks(self)
+                    .nth(self.search_index)
+                    .cloned();
+                if let Some(task) = selected {
+                    return self.update(Message::SelectTask(task));
+                }
+                return self.update(Message::AddTask);
+            }
+            Message::DismissSearch => {
                 self.editing_task = None;
-                return iced::widget::operation::focus("task-search");
+                self.new_task_name.clear();
+                self.search_index = 0;
+            }
+            Message::DismissTaskMenu => {
+                self.task_menu_open = false;
+                self.editing_task = None;
+            }
+            Message::Escape => {
+                self.new_task_name.clear();
+                self.search_index = 0;
+                if self.ready() {
+                    self.editing_task = None;
+                    self.task_menu_open = false;
+                }
             }
             Message::EditTask(task) if self.ready() => {
                 self.editing_task = Some((task.id, task.name));
@@ -267,10 +319,11 @@ impl App {
                     return self.store(Command::RenameTask(*id, name.clone()));
                 }
             }
-            Message::CancelTaskEdit if self.editing_task.is_some() && self.ready() => {
+            Message::TaskName(name) => {
                 self.editing_task = None;
+                self.new_task_name = name;
+                self.search_index = 0;
             }
-            Message::TaskName(name) => self.new_task_name = name,
             Message::AddTask if self.ready() => {
                 return self.store(Command::AddTask(self.new_task_name.clone()));
             }
