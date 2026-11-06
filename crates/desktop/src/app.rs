@@ -255,7 +255,11 @@ impl App {
                                     snapshot.tasks.iter().find(|task| task.id == selected.id)
                                 })
                             })
-                            .or_else(|| snapshot.tasks.last())
+                            .or_else(|| {
+                                snapshot.tasks.iter().max_by_key(|task| {
+                                    ui::task_selector::last_used(&snapshot, task.id)
+                                })
+                            })
                             .cloned();
                         if self.saving_frame {
                             if matches!(self.selected_frame, Some(FrameSelection::Active(..))) {
@@ -457,7 +461,11 @@ impl App {
                     && (self.task_menu_open || !self.new_task_name.trim().is_empty())
                     && self.editing_task.is_none() =>
             {
-                let count = ui::task_selector::matching_tasks(self).count();
+                let count = if self.task_menu_open {
+                    ui::task_selector::recent_tasks(self).count()
+                } else {
+                    ui::task_selector::matching_tasks(self).count()
+                };
                 if count > 0 {
                     self.search_index =
                         (self.search_index as i32 + direction).clamp(0, count as i32 - 1) as usize;
@@ -466,7 +474,7 @@ impl App {
             Message::MenuSubmit
                 if self.ready() && self.task_menu_open && self.editing_task.is_none() =>
             {
-                let selected = ui::task_selector::matching_tasks(self)
+                let selected = ui::task_selector::recent_tasks(self)
                     .nth(self.search_index)
                     .cloned();
                 if let Some(task) = selected {

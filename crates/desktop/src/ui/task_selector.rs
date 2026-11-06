@@ -74,7 +74,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
 pub fn menu(app: &App) -> Element<'_, Message> {
     let mut items = column![];
-    for (index, task) in matching_tasks(app).enumerate() {
+    for (index, task) in recent_tasks(app).enumerate() {
         let item = editable_task_item(app, task, index == app.search_index);
         items = items.push(item);
     }
@@ -87,6 +87,32 @@ pub fn menu(app: &App) -> Element<'_, Message> {
     .max_height(300)
     .style(container::rounded_box)
     .into()
+}
+
+pub fn recent_tasks(app: &App) -> impl Iterator<Item = &tracking_core::Task> {
+    let mut tasks: Vec<_> = app.snapshot.tasks.iter().collect();
+    tasks.sort_by_key(|task| last_used(&app.snapshot, task.id));
+    let skip = tasks.len().saturating_sub(app.settings.task_limit as usize);
+    tasks.into_iter().skip(skip)
+}
+
+pub fn last_used(
+    snapshot: &tracking_core::Snapshot,
+    task_id: uuid::Uuid,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    snapshot
+        .frames
+        .iter()
+        .filter(|frame| frame.task_id == task_id)
+        .map(|frame| frame.started_at)
+        .chain(
+            snapshot
+                .active
+                .iter()
+                .filter(|active| active.task_id == task_id)
+                .map(|active| active.started_at),
+        )
+        .max()
 }
 
 pub fn matching_tasks(app: &App) -> impl Iterator<Item = &tracking_core::Task> {

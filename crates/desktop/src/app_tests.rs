@@ -17,6 +17,56 @@ fn stored(snapshot: Snapshot) -> Message {
 }
 
 #[test]
+fn initial_selection_and_menu_follow_recent_tracking() {
+    let mut tracker = Tracker::new(Snapshot::default());
+    let first = tracker.add_task("First").unwrap();
+    let second = tracker.add_task("Second").unwrap();
+    let unused = tracker.add_task("Unused").unwrap();
+    let now = Utc::now();
+    tracker.start(second, now).unwrap();
+    tracker.pause(now + chrono::Duration::seconds(1)).unwrap();
+    tracker
+        .start(first, now + chrono::Duration::seconds(2))
+        .unwrap();
+    tracker.pause(now + chrono::Duration::seconds(3)).unwrap();
+
+    let (mut app, _) = App::new();
+    let _ = app.update(stored(tracker.into_snapshot()));
+    assert_eq!(app.selected.as_ref().unwrap().id, first);
+    app.settings.task_limit = 2;
+    assert_eq!(
+        ui::task_selector::recent_tasks(&app)
+            .map(|task| task.id)
+            .collect::<Vec<_>>(),
+        [second, first]
+    );
+    let _ = app.update(Message::ToggleTaskMenu);
+    let _ = app.update(Message::MenuSubmit);
+    assert_eq!(app.selected.as_ref().unwrap().id, second);
+
+    app.snapshot.active = Some(ActiveSession {
+        task_id: unused,
+        started_at: now + chrono::Duration::seconds(4),
+    });
+    assert_eq!(
+        ui::task_selector::recent_tasks(&app)
+            .map(|task| task.id)
+            .collect::<Vec<_>>(),
+        [first, unused]
+    );
+}
+
+#[test]
+fn initial_selection_falls_back_to_newest_unused_task() {
+    let mut tracker = Tracker::new(Snapshot::default());
+    tracker.add_task("First").unwrap();
+    let newest = tracker.add_task("Newest").unwrap();
+    let (mut app, _) = App::new();
+    let _ = app.update(stored(tracker.into_snapshot()));
+    assert_eq!(app.selected.as_ref().unwrap().id, newest);
+}
+
+#[test]
 fn adding_task_selects_it_only_when_paused_and_save_succeeds() {
     for running in [false, true] {
         let mut app = ready_app();
