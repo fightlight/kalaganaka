@@ -67,10 +67,15 @@ pub fn view(app: &App) -> Element<'_, Message> {
             button::Status::Hovered | button::Status::Pressed => 0.85,
             button::Status::Disabled => 0.5,
         };
+        let base = button::primary(theme, status);
         button::Style {
             background: Some(color.scale_alpha(opacity).into()),
             text_color: Color::BLACK,
-            ..button::primary(theme, status)
+            border: iced::Border {
+                radius: (TOGGLE_SIZE / 2.0).into(),
+                ..base.border
+            },
+            ..base
         }
     });
     if app.ready() && app.selected.is_some() {
