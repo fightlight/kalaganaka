@@ -286,3 +286,67 @@ fn statistics_group_by_task_identity_and_sum_separate_frames() {
     );
     assert!(statistics::totals(&Snapshot::default(), start, start + Duration::days(1)).is_empty());
 }
+
+#[test]
+fn frame_edits_validate_ranges_overlaps_and_stale_sessions() {
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = time("2026-11-02T09:00:00Z");
+    tracker.start(task, start).unwrap();
+    tracker.pause(start + Duration::minutes(15)).unwrap();
+    tracker.start(task, start + Duration::minutes(30)).unwrap();
+    let snapshot = tracker.into_snapshot();
+    let id = snapshot.frames[0].id;
+    let active_start = snapshot.active.as_ref().unwrap().started_at;
+    let now = start + Duration::minutes(45);
+    let mut tracker = Tracker::new(snapshot.clone());
+    assert!(matches!(
+        tracker.edit_frame(Some(id), None, start, Some(start), now),
+        Err(TrackingError::InvalidFrameRange)
+    ));
+    assert!(matches!(
+        tracker.edit_frame(
+            Some(id),
+            None,
+            start,
+            Some(active_start + Duration::minutes(1)),
+            now
+        ),
+        Err(TrackingError::OverlappingFrame)
+    ));
+    assert!(matches!(
+        tracker.edit_frame(
+            None,
+            Some((task, active_start)),
+            start + Duration::minutes(10),
+            None,
+            now
+        ),
+        Err(TrackingError::OverlappingFrame)
+    ));
+    assert!(matches!(
+        tracker.edit_frame(None, Some((task, start)), active_start, None, now),
+        Err(TrackingError::UnknownFrame)
+    ));
+    assert!(matches!(
+        tracker.edit_frame(
+            None,
+            Some((task, active_start)),
+            now + Duration::minutes(1),
+            None,
+            now
+        ),
+        Err(TrackingError::InvalidFrameRange)
+    ));
+    let unchanged = tracker.into_snapshot();
+    assert_eq!(unchanged.frames, snapshot.frames);
+    assert_eq!(unchanged.active, snapshot.active);
+    let mut tracker = Tracker::new(unchanged);
+    tracker
+        .edit_frame(Some(id), None, start, Some(active_start), now)
+        .unwrap();
+    tracker
+        .edit_frame(None, Some((task, active_start)), active_start, None, now)
+        .unwrap();
+    assert_eq!(tracker.into_snapshot().frames[0].ended_at, active_start);
+}

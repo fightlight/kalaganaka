@@ -323,3 +323,55 @@ fn search_and_menu_keyboard_selection_and_dismissal() {
     let _ = app.update(Message::Escape);
     assert!(app.new_task_name.is_empty());
 }
+
+#[test]
+fn frame_selection_and_time_editor_follow_tracking_and_validate_input() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = Utc::now() - chrono::Duration::minutes(20);
+    tracker.start(task, start).unwrap();
+    let active = tracker.into_snapshot();
+    let _ = app.update(stored(active.clone()));
+    assert_eq!(
+        app.selected_frame,
+        Some(FrameSelection::Active(task, start))
+    );
+    let _ = app.update(Message::EditFrameTime(FrameField::Start));
+    let _ = app.update(Message::FrameHourInput("23".into()));
+    let _ = app.update(Message::FrameHourInput("24".into()));
+    assert_eq!(app.frame_hour_input, "23");
+    let _ = app.update(Message::FrameMinuteInput("59".into()));
+    let _ = app.update(Message::FrameMinuteInput("60".into()));
+    assert_eq!(app.frame_minute_input, "59");
+    let _ = app.update(Message::Escape);
+    assert!(app.editing_frame_field.is_none());
+    let mut tracker = Tracker::new(active);
+    tracker
+        .pause(start + chrono::Duration::minutes(10))
+        .unwrap();
+    let completed = tracker.into_snapshot();
+    let id = completed.frames[0].id;
+    let _ = app.update(stored(completed));
+    assert_eq!(app.selected_frame, Some(FrameSelection::Completed(id)));
+}
+
+#[test]
+fn initial_load_selects_latest_completed_frame() {
+    let (mut app, _) = App::new();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = Utc::now() - chrono::Duration::hours(1);
+    tracker.start(task, start).unwrap();
+    tracker.pause(start + chrono::Duration::minutes(5)).unwrap();
+    tracker
+        .start(task, start + chrono::Duration::minutes(10))
+        .unwrap();
+    tracker
+        .pause(start + chrono::Duration::minutes(15))
+        .unwrap();
+    let snapshot = tracker.into_snapshot();
+    let id = snapshot.frames[1].id;
+    let _ = app.update(stored(snapshot));
+    assert_eq!(app.selected_frame, Some(FrameSelection::Completed(id)));
+}

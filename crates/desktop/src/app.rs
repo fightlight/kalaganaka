@@ -1,4 +1,4 @@
-use chrono::{Local, NaiveDate, Utc};
+use chrono::{DateTime, Local, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
 use iced::{Element, Subscription, Task, window};
 use tracking_core::Snapshot;
 
@@ -15,6 +15,14 @@ mod tests;
 #[derive(Debug, Clone)]
 pub enum Message {
     Stored(Result<Data, String>),
+    SelectFrame(FrameSelection),
+    EditFrameTime(FrameField),
+    FrameHourInput(String),
+    FrameMinuteInput(String),
+    FrameTab,
+    FrameHourFocused(bool),
+    FrameMinuteFocused(bool),
+    SaveFrameTime,
     Tick,
     Toggle,
     SelectTask(tracking_core::Task),
@@ -53,8 +61,25 @@ pub enum ViewMode {
     Week,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameSelection {
+    Completed(uuid::Uuid),
+    Active(uuid::Uuid, DateTime<Utc>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameField {
+    Start,
+    End,
+}
+
 pub struct App {
     pub snapshot: Snapshot,
+    pub selected_frame: Option<FrameSelection>,
+    pub editing_frame_field: Option<FrameField>,
+    pub frame_hour_input: String,
+    pub frame_minute_input: String,
+    saving_frame: bool,
     pub settings: Settings,
     pub selected: Option<tracking_core::Task>,
     pub new_task_name: String,
@@ -91,6 +116,11 @@ impl App {
         (
             Self {
                 snapshot: Snapshot::default(),
+                selected_frame: None,
+                editing_frame_field: None,
+                frame_hour_input: String::new(),
+                frame_minute_input: String::new(),
+                saving_frame: false,
                 settings: Settings::default(),
                 selected: None,
                 new_task_name: String::new(),
@@ -159,6 +189,10 @@ impl App {
                     key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter),
                     ..
                 }) => Some(Message::MenuSubmit),
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),
+                    ..
+                }) => Some(Message::FrameTab),
                 _ => None,
             }),
         ])
@@ -168,6 +202,7 @@ impl App {
         self.busy = true;
         self.adding_task = matches!(&command, Command::AddTask(_));
         self.renaming_task = matches!(&command, Command::RenameTask(..));
+        self.saving_frame = matches!(&command, Command::EditFrame { .. });
         self.saving_task_limit = matches!(&command, Command::SetTaskLimit(_));
         self.error = None;
         Task::perform(storage::execute(command), Message::Stored)
@@ -180,6 +215,21 @@ impl App {
                 match result {
                     Ok(Data { snapshot, settings }) => {
                         let tracking_changed = self.snapshot.active != snapshot.active;
+                        if !self.loaded {
+                            self.selected_frame = snapshot
+                                .active
+                                .as_ref()
+                                .map(|active| {
+                                    FrameSelection::Active(active.task_id, active.started_at)
+                                })
+                                .or_else(|| {
+                                    snapshot
+                                        .frames
+                                        .iter()
+                                        .max_by_key(|frame| frame.ended_at)
+                                        .map(|frame| FrameSelection::Completed(frame.id))
+                                });
+                        }
                         if !self.loaded || self.saving_task_limit {
                             self.task_limit_input = settings.task_limit.to_string();
                             self.task_limit_error = false;
@@ -207,6 +257,38 @@ impl App {
                             })
                             .or_else(|| snapshot.tasks.last())
                             .cloned();
+                        if self.saving_frame {
+                            if matches!(self.selected_frame, Some(FrameSelection::Active(..))) {
+                                self.selected_frame = snapshot.active.as_ref().map(|active| {
+                                    FrameSelection::Active(active.task_id, active.started_at)
+                                });
+                            }
+                            self.editing_frame_field = None;
+                        } else if let Some(FrameSelection::Active(task_id, started_at)) =
+                            self.selected_frame
+                        {
+                            if !snapshot
+                                .active
+                                .as_ref()
+                                .is_some_and(|a| a.task_id == task_id && a.started_at == started_at)
+                            {
+                                self.selected_frame = snapshot
+                                    .frames
+                                    .iter()
+                                    .find(|frame| {
+                                        frame.task_id == task_id && frame.started_at == started_at
+                                    })
+                                    .map(|frame| FrameSelection::Completed(frame.id));
+                                self.editing_frame_field = None;
+                            }
+                        }
+                        if tracking_changed && !self.saving_frame {
+                            if let Some(active) = &snapshot.active {
+                                self.selected_frame =
+                                    Some(FrameSelection::Active(active.task_id, active.started_at));
+                                self.editing_frame_field = None;
+                            }
+                        }
                         self.snapshot = snapshot;
                         if self.adding_task {
                             self.new_task_name.clear();
@@ -217,7 +299,7 @@ impl App {
                         if self.quitting {
                             return iced::exit();
                         }
-                        if tracking_changed {
+                        if tracking_changed && !self.saving_frame {
                             self.now = Local::now();
                             return ui::calendar::scroll_to_now(self);
                         }
@@ -227,6 +309,122 @@ impl App {
                         self.quitting = false;
                     }
                 }
+            }
+            Message::SelectFrame(frame) if self.ready() => {
+                self.selected_frame = Some(frame);
+                self.editing_frame_field = None;
+                self.error = None;
+            }
+            Message::EditFrameTime(field) if self.ready() => {
+                if let Some((_, start, end)) = self.frame_details() {
+                    let value = match field {
+                        FrameField::Start => Some(start),
+                        FrameField::End => end,
+                    };
+                    if let Some(value) = value {
+                        let local = value.with_timezone(&Local);
+                        self.frame_hour_input = local.format("%H").to_string();
+                        self.frame_minute_input = local.format("%M").to_string();
+                        self.editing_frame_field = Some(field);
+                        return iced::widget::operation::focus("frame-time");
+                    }
+                }
+            }
+            Message::FrameHourInput(value) => {
+                if value.is_empty()
+                    || (value.len() <= 2
+                        && value.bytes().all(|ch| ch.is_ascii_digit())
+                        && value.parse::<u8>().is_ok_and(|hour| hour <= 23))
+                {
+                    self.frame_hour_input = value;
+                }
+            }
+            Message::FrameMinuteInput(value) => {
+                if value.is_empty()
+                    || (value.len() <= 2
+                        && value.bytes().all(|ch| ch.is_ascii_digit())
+                        && value.parse::<u8>().is_ok_and(|minute| minute <= 59))
+                {
+                    self.frame_minute_input = value;
+                }
+            }
+            Message::FrameTab if self.ready() && self.editing_frame_field.is_some() => {
+                return iced::widget::operation::is_focused("frame-time")
+                    .map(Message::FrameHourFocused);
+            }
+            Message::FrameHourFocused(focused)
+                if self.ready() && self.editing_frame_field.is_some() =>
+            {
+                if focused {
+                    return iced::widget::operation::focus("frame-minute");
+                }
+                return iced::widget::operation::is_focused("frame-minute")
+                    .map(Message::FrameMinuteFocused);
+            }
+            Message::FrameMinuteFocused(true)
+                if self.ready() && self.editing_frame_field.is_some() =>
+            {
+                return iced::widget::operation::focus("frame-time");
+            }
+            Message::SaveFrameTime if self.ready() => {
+                let Some(field) = self.editing_frame_field else {
+                    return Task::none();
+                };
+                let Some((_, start, end)) = self.frame_details() else {
+                    return Task::none();
+                };
+                let parsed = self
+                    .frame_hour_input
+                    .parse::<u32>()
+                    .ok()
+                    .zip(self.frame_minute_input.parse::<u32>().ok())
+                    .and_then(|(hours, minutes)| NaiveTime::from_hms_opt(hours, minutes, 0));
+                let original = match field {
+                    FrameField::Start => start,
+                    FrameField::End => match end {
+                        Some(end) => end,
+                        None => return Task::none(),
+                    },
+                };
+                if parsed.is_some_and(|time| {
+                    time.format("%H:%M").to_string()
+                        == original.with_timezone(&Local).format("%H:%M").to_string()
+                }) {
+                    self.editing_frame_field = None;
+                    self.error = None;
+                    return Task::none();
+                }
+                let local_date = original.with_timezone(&Local).date_naive();
+                let Some(updated) = parsed
+                    .and_then(|time| time.with_second(original.second()))
+                    .and_then(|time| time.with_nanosecond(original.nanosecond()))
+                    .and_then(|time| {
+                        Local
+                            .from_local_datetime(&local_date.and_time(time))
+                            .single()
+                    })
+                    .map(|value| value.with_timezone(&Utc))
+                else {
+                    self.error =
+                        Some("Enter a valid, unambiguous local time in HH:MM format.".into());
+                    return Task::none();
+                };
+                let (new_start, new_end) = match field {
+                    FrameField::Start => (updated, end),
+                    FrameField::End => (start, Some(updated)),
+                };
+                let (id, expected_active) = match self.selected_frame {
+                    Some(FrameSelection::Completed(id)) => (Some(id), None),
+                    Some(FrameSelection::Active(task, started)) => (None, Some((task, started))),
+                    None => return Task::none(),
+                };
+                return self.store(Command::EditFrame {
+                    id,
+                    expected_active,
+                    start: new_start,
+                    end: new_end,
+                    now: Utc::now(),
+                });
             }
             Message::Tick => self.now = Local::now(),
             Message::SystemThemeChanged(mode) => self.system_theme = mode,
@@ -301,6 +499,11 @@ impl App {
                 self.new_task_name.clear();
                 self.search_index = 0;
                 if self.ready() {
+                    if self.editing_frame_field.take().is_some() {
+                        self.frame_hour_input.clear();
+                        self.frame_minute_input.clear();
+                        self.error = None;
+                    }
                     self.editing_task = None;
                     self.task_menu_open = false;
                 }
@@ -446,6 +649,23 @@ impl App {
             _ => {}
         }
         Task::none()
+    }
+
+    pub fn frame_details(&self) -> Option<(uuid::Uuid, DateTime<Utc>, Option<DateTime<Utc>>)> {
+        match self.selected_frame? {
+            FrameSelection::Completed(id) => self
+                .snapshot
+                .frames
+                .iter()
+                .find(|frame| frame.id == id)
+                .map(|frame| (frame.task_id, frame.started_at, Some(frame.ended_at))),
+            FrameSelection::Active(task, started) => self
+                .snapshot
+                .active
+                .as_ref()
+                .filter(|active| active.task_id == task && active.started_at == started)
+                .map(|active| (active.task_id, active.started_at, None)),
+        }
     }
 
     pub fn ready(&self) -> bool {

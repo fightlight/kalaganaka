@@ -20,6 +20,13 @@ pub enum Command {
     RenameTask(Uuid, String),
     Start(Uuid, DateTime<Utc>),
     Pause(DateTime<Utc>),
+    EditFrame {
+        id: Option<Uuid>,
+        expected_active: Option<(Uuid, DateTime<Utc>)>,
+        start: DateTime<Utc>,
+        end: Option<DateTime<Utc>>,
+        now: DateTime<Utc>,
+    },
 }
 
 /// Each operation runs on a blocking worker; the UI serializes mutations.
@@ -60,6 +67,15 @@ pub async fn execute(command: Command) -> Result<Data, String> {
                         tracker.start(id, now).map_err(|error| error.to_string())?
                     }
                     Command::Pause(now) => tracker.pause(now).map_err(|error| error.to_string())?,
+                    Command::EditFrame {
+                        id,
+                        expected_active,
+                        start,
+                        end,
+                        now,
+                    } => tracker
+                        .edit_frame(id, expected_active, start, end, now)
+                        .map_err(|error| error.to_string())?,
                     Command::Load | Command::SetTheme(_) | Command::SetTaskLimit(_) => {
                         unreachable!()
                     }

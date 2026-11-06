@@ -1,5 +1,5 @@
 use super::layout;
-use crate::app::{App, Message};
+use crate::app::{App, FrameSelection, Message};
 use chrono::{Days, Utc};
 use iced::{
     Color, Point, Rectangle, Renderer, Size, Theme, mouse,
@@ -12,6 +12,39 @@ pub struct Calendar<'a> {
 
 impl canvas::Program<Message> for Calendar<'_> {
     type State = ();
+
+    fn update(
+        &self,
+        _state: &mut (),
+        event: &canvas::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        if !matches!(
+            event,
+            canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+        ) {
+            return None;
+        }
+        if !self.app.ready() {
+            return None;
+        }
+        self.hit_frame(bounds, cursor)
+            .map(|frame| canvas::Action::publish(Message::SelectFrame(frame)).and_capture())
+    }
+
+    fn mouse_interaction(
+        &self,
+        _state: &(),
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> mouse::Interaction {
+        if self.app.ready() && self.hit_frame(bounds, cursor).is_some() {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::default()
+        }
+    }
 
     fn draw(
         &self,
@@ -106,6 +139,50 @@ impl canvas::Program<Message> for Calendar<'_> {
 }
 
 impl Calendar<'_> {
+    fn hit_frame(&self, bounds: Rectangle, cursor: mouse::Cursor) -> Option<FrameSelection> {
+        let point = cursor.position_in(bounds)?;
+        let dates = layout::dates(self.app.date, self.app.mode);
+        let width = ((bounds.width - layout::GUTTER) / dates.len() as f32).max(1.0);
+        let index = ((point.x - layout::GUTTER) / width).floor() as usize;
+        if point.x < layout::GUTTER || index >= dates.len() {
+            return None;
+        }
+        let x = layout::GUTTER + index as f32 * width;
+        if point.x < x + 3.0 || point.x > x + 3.0 + (width - 6.0).max(1.0) {
+            return None;
+        }
+        let start = layout::day_start(dates[index])?;
+        let end = dates[index]
+            .checked_add_days(Days::new(1))
+            .and_then(layout::day_start)?;
+        let contains = |from: chrono::DateTime<Utc>, to: chrono::DateTime<Utc>| {
+            let from = from.max(start);
+            let to = to.min(end);
+            if to <= from {
+                return false;
+            }
+            let top = layout::y(layout::minute(from));
+            let bottom = if to == end {
+                layout::HEIGHT
+            } else {
+                layout::y(layout::minute(to))
+            };
+            point.y >= top && point.y <= top + (bottom - top).max(3.0)
+        };
+        if let Some(active) = &self.app.snapshot.active {
+            if contains(active.started_at, self.app.now.with_timezone(&Utc)) {
+                return Some(FrameSelection::Active(active.task_id, active.started_at));
+            }
+        }
+        self.app
+            .snapshot
+            .frames
+            .iter()
+            .rev()
+            .find(|frame| contains(frame.started_at, frame.ended_at))
+            .map(|frame| FrameSelection::Completed(frame.id))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn draw_block(
         &self,

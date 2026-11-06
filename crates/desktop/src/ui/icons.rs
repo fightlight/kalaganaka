@@ -16,6 +16,7 @@ pub enum Icon {
     Settings,
     Statistics,
     Pencil,
+    Check,
 }
 
 pub fn view<'a, Message: 'a>(icon: Icon, size: f32) -> Element<'a, Message> {
@@ -43,7 +44,8 @@ impl<Message> canvas::Program<Message> for Icon {
             | Self::Next
             | Self::Settings
             | Self::Statistics
-            | Self::Pencil => palette.background.base.text,
+            | Self::Pencil
+            | Self::Check => palette.background.base.text,
         };
         let stroke = Stroke::default().with_color(colour).with_width(1.8);
         match self {
@@ -128,6 +130,14 @@ impl<Message> canvas::Program<Message> for Icon {
                         colour,
                     );
                 }
+            }
+            Self::Check => {
+                let check = Path::new(|path| {
+                    path.move_to(Point::new(4.0, 12.0));
+                    path.line_to(Point::new(9.0, 17.0));
+                    path.line_to(Point::new(20.0, 6.0));
+                });
+                frame.stroke(&check, stroke);
             }
             Self::Pencil => {
                 let pencil = Path::new(|path| {

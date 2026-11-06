@@ -12,6 +12,12 @@ To rename a task, click the pencil beside it in either selector.
 Edit the name and press Enter to save. Press Escape or click outside the selector
 to cancel.
 
+Click a calendar frame to view its task and elapsed time. Use the pencil beside
+Start or End to edit the local time; Enter or the checkmark saves, Tab switches
+between hours and minutes, and Escape cancels. Running frames can have their
+start edited. Edits retain the existing date and seconds and cannot overlap
+another frame. Invalid or ambiguous local times are rejected.
+
 ## Install from source
 
 Until application packaging is available, install with Cargo. These instructions

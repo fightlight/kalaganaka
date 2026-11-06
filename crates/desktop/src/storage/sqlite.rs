@@ -166,7 +166,7 @@ impl Repository for SqliteRepository {
                 params![task.id.to_string(), task.name, task.colour]).map_err(|error| error.to_string())?;
         }
         for frame in &snapshot.frames {
-            transaction.execute("INSERT INTO time_frames (id, task_id, started_at, ended_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO NOTHING",
+            transaction.execute("INSERT INTO time_frames (id, task_id, started_at, ended_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET started_at = excluded.started_at, ended_at = excluded.ended_at",
                 params![frame.id.to_string(), frame.task_id.to_string(), timestamp(frame.started_at), timestamp(frame.ended_at)])
                 .map_err(|error| error.to_string())?;
         }

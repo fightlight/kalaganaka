@@ -3,6 +3,5 @@
 - feat: lock task selector and 'add new task' when the task is in progress (not paused)
 - feat: task removal (with the frames)
 - feat: add time frame manually (check time frame range with existing time frames)
-- feat: time frame edit
 - feat: tags for frames
 - feat: jira sync

@@ -1,7 +1,7 @@
 use super::{
     calendar,
     icons::{self, Icon},
-    task_selector,
+    task_selector, time_frame,
 };
 use crate::app::{App, Message, ViewMode};
 use chrono::Datelike;
@@ -110,7 +110,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let content = column![header]
         .spacing(12)
         .push(calendar::view(app))
-        .push(task_selector::view(app));
+        .push(row![time_frame::view(app), task_selector::view(app)].align_y(iced::Top));
     let content = container(content).padding(18).width(Fill).height(Fill);
     let mut layers = stack![content];
     if !app.new_task_name.trim().is_empty() && !app.task_menu_open {

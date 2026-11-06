@@ -151,3 +151,35 @@ fn new_database_defaults_task_limit_to_five() {
     assert_eq!(repository.load_settings().unwrap(), Settings::default());
     assert_eq!(repository.load_settings().unwrap().task_limit, 5);
 }
+
+#[test]
+fn edited_frame_times_survive_reopening() {
+    let database = TestDatabase::new();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start: DateTime<Utc> = "2026-11-02T09:00:15Z".parse().unwrap();
+    tracker.start(task, start).unwrap();
+    tracker.pause(start + Duration::minutes(10)).unwrap();
+    let snapshot = tracker.into_snapshot();
+    let mut repository = SqliteRepository::open(&database.path()).unwrap();
+    repository.save(&snapshot).unwrap();
+    let mut tracker = Tracker::new(snapshot.clone());
+    tracker
+        .edit_frame(
+            Some(snapshot.frames[0].id),
+            None,
+            start + Duration::minutes(1),
+            Some(start + Duration::minutes(12)),
+            start + Duration::hours(1),
+        )
+        .unwrap();
+    let expected = tracker.into_snapshot();
+    repository.save(&expected).unwrap();
+    drop(repository);
+    let reopened = SqliteRepository::open(&database.path())
+        .unwrap()
+        .load()
+        .unwrap();
+    assert_eq!(reopened.frames, expected.frames);
+    assert_eq!(reopened.tasks, expected.tasks);
+}
