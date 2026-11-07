@@ -19,7 +19,6 @@ jobs:
       contents: write
     env:
       RELEASE_TAG: ${{ github.ref_name }}
-      RELEASE_NOTES: ${{ runner.temp }}/release-notes.md
     steps:
       - name: Check out the tagged commit and release history
         uses: actions/checkout@v4
@@ -51,11 +50,12 @@ jobs:
           config: cliff.toml
           args: --current --strip header
         env:
-          OUTPUT: ${{ env.RELEASE_NOTES }}
+          OUTPUT: ${{ runner.temp }}/release-notes.md
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ runner.temp }}/release-notes.md
         run: |
           gh release create "$RELEASE_TAG" \
             --verify-tag \
