@@ -3,6 +3,7 @@ use iced::{Element, Subscription, Task, window};
 use tracking_core::Snapshot;
 
 use crate::{
+    platform,
     settings::{MAX_TASK_LIMIT, MIN_TASK_LIMIT, Settings, ThemePreference},
     storage::{self, Command, Data},
     ui,
@@ -141,6 +142,7 @@ impl App {
         let (main_window, open) = window::open(window::Settings {
             size: iced::Size::new(1050.0, 800.0),
             exit_on_close_request: false,
+            platform_specific: platform::window_settings(),
             ..Default::default()
         });
         (
@@ -411,6 +413,7 @@ impl App {
                 let (id, open) = window::open(window::Settings {
                     size: iced::Size::new(440.0, 620.0),
                     exit_on_close_request: false,
+                    platform_specific: platform::window_settings(),
                     ..Default::default()
                 });
                 self.add_frame_window = Some(id);
@@ -864,6 +867,7 @@ impl App {
                 let (id, open) = window::open(window::Settings {
                     size: iced::Size::new(540.0, 580.0),
                     exit_on_close_request: false,
+                    platform_specific: platform::window_settings(),
                     ..Default::default()
                 });
                 self.statistics_window = Some(id);
@@ -876,6 +880,7 @@ impl App {
                 let (id, open) = window::open(window::Settings {
                     size: iced::Size::new(440.0, 320.0),
                     exit_on_close_request: false,
+                    platform_specific: platform::window_settings(),
                     ..Default::default()
                 });
                 self.settings_window = Some(id);
