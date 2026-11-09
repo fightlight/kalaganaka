@@ -53,6 +53,39 @@ To run directly from the checkout without installing:
 cargo run --release --locked -p kalaganaka
 ```
 
+### Linux application launcher
+
+To install the icon for your user, run these commands from the checkout root.
+The second command requires ImageMagick:
+
+```sh
+install -Dm644 assets/app-icon.png \
+  "$HOME/.local/share/icons/hicolor/256x256/apps/kalaganaka.png"
+magick "$HOME/.local/share/icons/hicolor/256x256/apps/kalaganaka.png" \
+  -resize 256x256 \
+  "$HOME/.local/share/icons/hicolor/256x256/apps/kalaganaka.png"
+```
+
+Create a desktop entry so the application appears in your desktop's application
+overview. This example uses Cargo's default installation path; adjust `Exec` if
+you installed the binary elsewhere:
+
+```sh
+mkdir -p "$HOME/.local/share/applications"
+cat > "$HOME/.local/share/applications/kalaganaka.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Kalaganaka
+Comment=Manual task time tracking
+Exec="$HOME/.cargo/bin/kalaganaka"
+Icon=kalaganaka
+Terminal=false
+Categories=Office;Utility;
+EOF
+```
+
+If GNOME still shows an older icon, log out and back in to refresh the shell.
+
 ## Development and coding agents
 
 Agents working on this repository must read [AGENTS.md](AGENTS.md) before making
