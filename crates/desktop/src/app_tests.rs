@@ -17,6 +17,68 @@ fn stored(snapshot: Snapshot) -> Message {
 }
 
 #[test]
+fn tag_input_cancels_outside_but_stays_open_over_suggestions() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = Utc::now();
+    tracker.start(task, start).unwrap();
+    app.snapshot = tracker.into_snapshot();
+    app.selected_frame = Some(FrameSelection::Active(task, start));
+    let _ = app.update(Message::EditMetadata(true));
+    let _ = app.update(Message::TagInput("dev".into()));
+    let _ = app.update(Message::TagSuggestionsHovered(true));
+    let _ = app.update(Message::MetadataOutsideClick);
+    assert!(app.editing_tags);
+    let _ = app.update(Message::TagSuggestionsHovered(false));
+    let _ = app.update(Message::MetadataOutsideClick);
+    assert!(!app.editing_tags);
+    assert!(app.tag_input.is_empty());
+    assert!(app.frame_metadata().unwrap().tags.is_empty());
+}
+
+#[test]
+fn description_outside_click_cancels_without_saving() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = Utc::now();
+    tracker.start(task, start).unwrap();
+    app.snapshot = tracker.into_snapshot();
+    app.selected_frame = Some(FrameSelection::Active(task, start));
+    let _ = app.update(Message::EditMetadata(false));
+    app.description_draft = iced::widget::text_editor::Content::with_text("draft");
+    let _ = app.update(Message::DescriptionAreaHovered(true));
+    let _ = app.update(Message::MetadataOutsideClick);
+    assert!(app.editing_description);
+    let _ = app.update(Message::DescriptionAreaHovered(false));
+    let _ = app.update(Message::MetadataOutsideClick);
+    assert!(!app.editing_description);
+    assert!(app.frame_metadata().unwrap().description.is_empty());
+}
+
+#[test]
+fn time_edit_is_cancelled_by_outside_click_or_escape() {
+    let mut app = ready_app();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = Utc::now() - chrono::Duration::hours(1);
+    tracker.start(task, start).unwrap();
+    app.snapshot = tracker.into_snapshot();
+    app.selected_frame = Some(FrameSelection::Active(task, start));
+
+    for cancel in [Message::MetadataOutsideClick, Message::Escape] {
+        let _ = app.update(Message::EditFrameTime(FrameField::Start));
+        let _ = app.update(Message::FrameHourInput("12".into()));
+        let _ = app.update(Message::FrameTimeHovered(false));
+        let _ = app.update(cancel);
+        assert!(app.editing_frame_field.is_none());
+        assert!(app.frame_hour_input.is_empty());
+        assert_eq!(app.snapshot.active.as_ref().unwrap().started_at, start);
+    }
+}
+
+#[test]
 fn initial_selection_and_menu_follow_recent_tracking() {
     let mut tracker = Tracker::new(Snapshot::default());
     let first = tracker.add_task("First").unwrap();
@@ -47,6 +109,7 @@ fn initial_selection_and_menu_follow_recent_tracking() {
     app.snapshot.active = Some(ActiveSession {
         task_id: unused,
         started_at: now + chrono::Duration::seconds(4),
+        metadata: Default::default(),
     });
     assert_eq!(
         ui::task_selector::recent_tasks(&app)
@@ -132,6 +195,22 @@ fn calendar_state_survives_status_messages_appearing_and_disappearing() {
 }
 
 #[test]
+fn calendar_state_survives_resizing_across_layouts() {
+    let mut app = ready_app();
+    let calendar_tag = Tree::new(ui::calendar::view(&app).as_widget()).tag;
+    let mut tree = Tree::new(ui::main_window::view(&app).as_widget());
+    let original = calendar_state(&tree, calendar_tag).expect("calendar has scroll state");
+    for width in [1000.0, 900.0, 675.0, 500.0, 1050.0] {
+        let _ = app.update(Message::WindowResized(
+            app.main_window,
+            iced::Size::new(width, 800.0),
+        ));
+        tree.diff(ui::main_window::view(&app).as_widget());
+        assert_eq!(calendar_state(&tree, calendar_tag), Some(original));
+    }
+}
+
+#[test]
 fn successful_start_switch_and_pause_request_scrolling() {
     let mut app = ready_app();
     let mut tracker = Tracker::new(Snapshot::default());
@@ -144,10 +223,12 @@ fn successful_start_switch_and_pause_request_scrolling() {
         Some(ActiveSession {
             task_id: first,
             started_at: start,
+            metadata: Default::default(),
         }),
         Some(ActiveSession {
             task_id: second,
             started_at: start,
+            metadata: Default::default(),
         }),
         None,
     ] {

@@ -18,6 +18,7 @@ pub enum Command {
     SetTaskLimit(u32),
     AddTask(String),
     RenameTask(Uuid, String),
+    SetFrameMetadata(tracking_core::FrameSelection, tracking_core::FrameMetadata),
     Start(Uuid, DateTime<Utc>),
     Pause(DateTime<Utc>),
     AddFrame {
@@ -69,6 +70,9 @@ pub async fn execute(command: Command) -> Result<Data, String> {
                             .rename_task(id, &name)
                             .map_err(|error| error.to_string())?;
                     }
+                    Command::SetFrameMetadata(selection, metadata) => tracker
+                        .set_metadata(selection, metadata)
+                        .map_err(|error| error.to_string())?,
                     Command::Start(id, now) => {
                         tracker.start(id, now).map_err(|error| error.to_string())?
                     }

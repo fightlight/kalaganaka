@@ -25,6 +25,22 @@ pub enum Message {
     FrameHourFocused(bool),
     FrameMinuteFocused(bool),
     SaveFrameTime,
+    EditMetadata(bool),
+    CancelMetadata,
+    MetadataAreaPressed,
+    FrameTimeHovered(bool),
+    TagAreaHovered(bool),
+    TagSuggestionsHovered(bool),
+    DescriptionAreaHovered(bool),
+    MetadataOutsideClick,
+    SaveMetadata(bool),
+    DescriptionInput(iced::widget::text_editor::Action),
+    TagInput(String),
+    TagSubmit,
+    TagChoose(String),
+    TagRemove(usize),
+    TagKey(i32),
+    TagKeyFocused(i32, bool),
     OpenAddFrame,
     AddFrameSearch(String),
     AddFrameSearchMove(i32),
@@ -68,6 +84,7 @@ pub enum Message {
     AdjustTaskLimit(i32),
     SystemThemeChanged(iced::theme::Mode),
     WindowOpened(window::Id),
+    WindowResized(window::Id, iced::Size),
     CloseRequested(window::Id),
     ConfirmQuit,
     CancelQuit,
@@ -90,8 +107,19 @@ pub struct App {
     pub snapshot: Snapshot,
     pub selected_frame: Option<FrameSelection>,
     pub editing_frame_field: Option<FrameField>,
+    frame_time_hovered: bool,
     pub frame_hour_input: String,
     pub frame_minute_input: String,
+    pub editing_tags: bool,
+    tag_area_hovered: bool,
+    tag_suggestions_hovered: bool,
+    description_area_hovered: bool,
+    pub editing_description: bool,
+    pub tag_input: String,
+    pub tag_draft: Vec<String>,
+    pub tag_index: usize,
+    pub description_draft: iced::widget::text_editor::Content,
+    saving_metadata: Option<bool>,
     saving_frame: bool,
     pub settings: Settings,
     pub selected: Option<tracking_core::Task>,
@@ -123,6 +151,7 @@ pub struct App {
     pub add_frame_error: Option<String>,
     pending_new_frame: Option<DateTime<Utc>>,
     main_window: window::Id,
+    pub main_window_width: f32,
     statistics_window: Option<window::Id>,
     settings_window: Option<window::Id>,
     system_theme: iced::theme::Mode,
@@ -136,6 +165,7 @@ impl App {
     pub fn new() -> (Self, Task<Message>) {
         let (main_window, open) = window::open(window::Settings {
             size: iced::Size::new(1050.0, 800.0),
+            min_size: Some(iced::Size::new(384.0, 0.0)),
             exit_on_close_request: false,
             platform_specific: platform::window_settings(),
             ..Default::default()
@@ -145,8 +175,19 @@ impl App {
                 snapshot: Snapshot::default(),
                 selected_frame: None,
                 editing_frame_field: None,
+                frame_time_hovered: false,
                 frame_hour_input: String::new(),
                 frame_minute_input: String::new(),
+                editing_tags: false,
+                tag_area_hovered: false,
+                tag_suggestions_hovered: false,
+                description_area_hovered: false,
+                editing_description: false,
+                tag_input: String::new(),
+                tag_draft: Vec::new(),
+                tag_index: 0,
+                description_draft: iced::widget::text_editor::Content::new(),
+                saving_metadata: None,
                 saving_frame: false,
                 settings: Settings::default(),
                 selected: None,
@@ -178,6 +219,7 @@ impl App {
                 add_frame_error: None,
                 pending_new_frame: None,
                 main_window,
+                main_window_width: 1050.0,
                 statistics_window: None,
                 settings_window: None,
                 system_theme: iced::theme::Mode::None,
@@ -213,9 +255,13 @@ impl App {
         Subscription::batch([
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick),
             window::close_requests().map(Message::CloseRequested),
+            window::resize_events().map(|(id, size)| Message::WindowResized(id, size)),
             crate::platform::appearance::changes().map(Message::SystemThemeChanged),
             iced::event::listen_with(|event, _status, window| {
                 let message = match event {
+                    iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
+                        iced::mouse::Button::Left,
+                    )) => Some(Message::MetadataOutsideClick),
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                         ..
@@ -260,7 +306,19 @@ impl App {
                 self.busy = false;
                 match result {
                     Ok(Data { snapshot, settings }) => {
-                        let tracking_changed = self.snapshot.active != snapshot.active;
+                        if let Some(tags) = self.saving_metadata.take() {
+                            if tags {
+                                self.editing_tags = false;
+                                self.tag_input.clear();
+                            } else {
+                                self.editing_description = false;
+                            }
+                        }
+                        let identity = |active: &Option<tracking_core::ActiveSession>| {
+                            active.as_ref().map(|a| (a.task_id, a.started_at))
+                        };
+                        let tracking_changed =
+                            identity(&self.snapshot.active) != identity(&snapshot.active);
                         if !self.loaded {
                             self.selected_frame = snapshot
                                 .active
@@ -336,6 +394,9 @@ impl App {
                             }
                         }
                         if tracking_changed && !self.saving_frame {
+                            self.editing_tags = false;
+                            self.editing_description = false;
+                            self.tag_input.clear();
                             if let Some(active) = &snapshot.active {
                                 self.selected_frame =
                                     Some(FrameSelection::Active(active.task_id, active.started_at));
@@ -376,6 +437,7 @@ impl App {
                         }
                     }
                     Err(error) => {
+                        self.saving_metadata = None;
                         if self.pending_new_frame.take().is_some() || self.adding_frame_task {
                             self.add_frame_error = Some(error);
                         } else {
@@ -388,6 +450,9 @@ impl App {
             }
             Message::SelectFrame(frame) if self.ready() => {
                 self.selected_frame = Some(frame);
+                self.editing_tags = false;
+                self.editing_description = false;
+                self.tag_input.clear();
                 self.editing_frame_field = None;
                 self.error = None;
             }
@@ -416,6 +481,11 @@ impl App {
             }
             Message::WindowKey(id, message) => {
                 if id == self.main_window {
+                    if self.editing_tags {
+                        if let Message::SearchMove(direction) = *message {
+                            return self.update(Message::TagKey(direction));
+                        }
+                    }
                     return self.update(match *message {
                         Message::AddFrameTab(_) => Message::FrameTab,
                         other => other,
@@ -622,6 +692,7 @@ impl App {
                         self.frame_hour_input = local.format("%H").to_string();
                         self.frame_minute_input = local.format("%M").to_string();
                         self.editing_frame_field = Some(field);
+                        self.frame_time_hovered = true;
                         return iced::widget::operation::focus("frame-time");
                     }
                 }
@@ -722,6 +793,130 @@ impl App {
                     now: Utc::now(),
                 });
             }
+            Message::EditMetadata(tags) if self.ready() => {
+                let Some(metadata) = self.frame_metadata().cloned() else {
+                    return Task::none();
+                };
+                if tags {
+                    self.tag_draft = metadata.tags;
+                    self.tag_input.clear();
+                    self.tag_suggestions_hovered = false;
+                    self.tag_index = 0;
+                    self.editing_tags = true;
+                    return iced::widget::operation::focus("frame-tags");
+                }
+                self.description_draft =
+                    iced::widget::text_editor::Content::with_text(&metadata.description);
+                self.editing_description = true;
+                return iced::widget::operation::focus("frame-description");
+            }
+            Message::CancelMetadata if self.ready() => {
+                self.editing_tags = false;
+                self.editing_description = false;
+                self.tag_input.clear();
+                self.tag_suggestions_hovered = false;
+            }
+            Message::MetadataAreaPressed => {}
+            Message::FrameTimeHovered(hovered) => self.frame_time_hovered = hovered,
+            Message::TagAreaHovered(hovered) => self.tag_area_hovered = hovered,
+            Message::TagSuggestionsHovered(hovered) => self.tag_suggestions_hovered = hovered,
+            Message::DescriptionAreaHovered(hovered) => self.description_area_hovered = hovered,
+            Message::MetadataOutsideClick if self.ready() => {
+                if self.editing_frame_field.is_some() && !self.frame_time_hovered {
+                    self.editing_frame_field = None;
+                    self.frame_hour_input.clear();
+                    self.frame_minute_input.clear();
+                    self.error = None;
+                }
+                if self.editing_tags && !self.tag_area_hovered && !self.tag_suggestions_hovered {
+                    self.editing_tags = false;
+                    self.tag_input.clear();
+                    self.tag_suggestions_hovered = false;
+                }
+                if self.editing_description && !self.description_area_hovered {
+                    self.editing_description = false;
+                }
+            }
+            Message::DescriptionInput(action) if self.editing_description && self.ready() => {
+                self.description_draft.perform(action)
+            }
+            Message::TagInput(value) => {
+                self.tag_input = value;
+                if self.tag_input.trim().is_empty() {
+                    self.tag_suggestions_hovered = false;
+                }
+                self.tag_index = 0;
+            }
+            Message::TagKey(direction) if self.editing_tags => {
+                return iced::widget::operation::is_focused("frame-tags")
+                    .map(move |focused| Message::TagKeyFocused(direction, focused));
+            }
+            Message::TagKeyFocused(direction, true) if self.editing_tags => {
+                let count = self.tag_suggestions().len().max(1);
+                self.tag_index =
+                    (self.tag_index as i32 + direction).clamp(0, count as i32 - 1) as usize;
+            }
+            Message::TagSubmit if self.editing_tags && self.ready() => {
+                if !self.tag_input.trim().is_empty() {
+                    let tag = self
+                        .tag_suggestions()
+                        .get(self.tag_index)
+                        .cloned()
+                        .unwrap_or_else(|| self.tag_input.trim().to_owned());
+                    return self.update(Message::TagChoose(tag));
+                }
+            }
+            Message::TagChoose(tag) if self.editing_tags && self.ready() => {
+                let tag = tag.trim();
+                if !tag.is_empty()
+                    && !self
+                        .tag_draft
+                        .iter()
+                        .any(|existing| existing.eq_ignore_ascii_case(tag))
+                {
+                    self.tag_draft.push(tag.to_owned());
+                    return self.update(Message::SaveMetadata(true));
+                }
+                self.tag_input.clear();
+                self.tag_index = 0;
+                return iced::widget::operation::focus("frame-tags");
+            }
+            Message::TagRemove(index) if self.ready() => {
+                let Some(selection) = self.selected_frame else {
+                    return Task::none();
+                };
+                let Some(mut metadata) = self.frame_metadata().cloned() else {
+                    return Task::none();
+                };
+                if index >= metadata.tags.len() {
+                    return Task::none();
+                }
+                metadata.tags.remove(index);
+                self.saving_metadata = Some(true);
+                return self.store(Command::SetFrameMetadata(selection, metadata));
+            }
+            Message::SaveMetadata(tags) if self.ready() => {
+                if !(if tags {
+                    self.editing_tags
+                } else {
+                    self.editing_description
+                }) {
+                    return Task::none();
+                }
+                let Some(selection) = self.selected_frame else {
+                    return Task::none();
+                };
+                let Some(mut metadata) = self.frame_metadata().cloned() else {
+                    return Task::none();
+                };
+                if tags {
+                    metadata.tags = self.tag_draft.clone();
+                } else {
+                    metadata.description = self.description_draft.text();
+                }
+                self.saving_metadata = Some(tags);
+                return self.store(Command::SetFrameMetadata(selection, metadata));
+            }
             Message::Tick => self.now = Local::now(),
             Message::SystemThemeChanged(mode) => self.system_theme = mode,
             Message::Toggle if self.ready() => {
@@ -799,6 +994,9 @@ impl App {
                 self.new_task_name.clear();
                 self.search_index = 0;
                 if self.ready() {
+                    self.editing_tags = false;
+                    self.editing_description = false;
+                    self.tag_input.clear();
                     if self.editing_frame_field.take().is_some() {
                         self.frame_hour_input.clear();
                         self.frame_minute_input.clear();
@@ -854,6 +1052,9 @@ impl App {
             Message::WindowOpened(id) if id == self.main_window => {
                 self.now = Local::now();
                 return ui::calendar::scroll_to_now(self);
+            }
+            Message::WindowResized(id, size) if id == self.main_window => {
+                self.main_window_width = size.width;
             }
             Message::OpenStatistics => {
                 if let Some(id) = self.statistics_window {
@@ -968,6 +1169,32 @@ impl App {
                 Some((active.task_id, active.started_at, None))
             }
         }
+    }
+
+    pub fn frame_metadata(&self) -> Option<&tracking_core::FrameMetadata> {
+        match self.snapshot.frame(self.selected_frame?)? {
+            tracking_core::FrameRef::Completed(frame) => Some(&frame.metadata),
+            tracking_core::FrameRef::Active(active) => Some(&active.metadata),
+        }
+    }
+
+    pub fn tag_suggestions(&self) -> Vec<String> {
+        let query = self.tag_input.trim().to_lowercase();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        self.snapshot
+            .tags
+            .iter()
+            .filter(|tag| {
+                tag.to_lowercase().contains(&query)
+                    && !self
+                        .tag_draft
+                        .iter()
+                        .any(|selected| selected.eq_ignore_ascii_case(tag))
+            })
+            .cloned()
+            .collect()
     }
 
     pub fn ready(&self) -> bool {

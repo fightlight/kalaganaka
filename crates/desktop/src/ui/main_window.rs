@@ -73,17 +73,28 @@ pub fn view(app: &App) -> Element<'_, Message> {
             .style(button::text)
             .on_press(Message::Navigate(1)),
     ];
-    let navigation = row![arrows, space().width(Fill), actions]
+    let date = text(app.date.format("%d %B %Y").to_string());
+    let date_navigation = row![date, arrows].spacing(10).align_y(iced::Center);
+    let toolbar: Element<'_, Message> = if app.main_window_width < 680.0 {
+        column![
+            container(date_navigation).width(Fill).align_x(iced::Center),
+            container(actions).width(Fill).align_x(iced::Right)
+        ]
         .spacing(10)
         .width(Fill)
-        .align_y(iced::Center);
-    let toolbar = row![
-        space().width(Fill),
-        text(app.date.format("%d %B %Y").to_string()),
-        navigation
-    ]
-    .spacing(10)
-    .align_y(iced::Center);
+        .into()
+    } else {
+        row![
+            space().width(206),
+            space().width(Fill),
+            date_navigation,
+            space().width(Fill),
+            actions
+        ]
+        .spacing(10)
+        .align_y(iced::Center)
+        .into()
+    };
     // Keep the status container in the tree even when it is empty, so the
     // calendar and controls retain their widget state.
     let mut status = column![].spacing(12);
@@ -108,16 +119,28 @@ pub fn view(app: &App) -> Element<'_, Message> {
         );
     }
     let has_status = app.busy || app.error.is_some() || app.recovered_session || app.confirm_quit;
-    let details = column![
-        status,
-        row![time_frame::view(app), task_selector::view(app)].align_y(iced::Top)
-    ]
-    .spacing(if has_status { 12 } else { 0 });
+    let stacked_frame = app.main_window_width < 962.0;
+    let stacked_task = app.main_window_width < 676.0;
+    let frame = time_frame::view(app, stacked_frame);
+    let task = task_selector::view(app);
+    let controls: Element<'_, Message> = if stacked_task {
+        column![frame, container(task).width(Fill).align_x(iced::Right)]
+            .spacing(12)
+            .width(Fill)
+            .into()
+    } else {
+        row![frame, task].spacing(12).align_y(iced::Bottom).into()
+    };
+    let details = column![status, controls].spacing(if has_status { 12 } else { 0 });
     let content = column![toolbar]
         .spacing(12)
         .push(calendar::view(app))
         .push(details);
     let content = container(content).padding(18).width(Fill).height(Fill);
+    let mut content = mouse_area(content);
+    if app.editing_tags || app.editing_description {
+        content = content.on_press(Message::CancelMetadata);
+    }
     let mut layers = stack![content];
     if !app.new_task_name.trim().is_empty() && !app.task_menu_open {
         let dismiss =

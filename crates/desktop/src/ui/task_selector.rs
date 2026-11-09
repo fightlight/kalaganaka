@@ -2,7 +2,7 @@ use super::icons::{self, Icon};
 use crate::app::{App, Message};
 use iced::{
     Color, Element, Fill,
-    widget::{button, column, container, row, scrollable, space, text, text_input},
+    widget::{button, column, container, row, scrollable, text, text_input},
 };
 
 const FIELD_HEIGHT: f32 = 36.0;
@@ -65,7 +65,6 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .spacing(SPACING)
     .height(TOGGLE_SIZE);
     row![
-        space().width(Fill),
         column![
             text("Task").font(iced::Font {
                 weight: iced::font::Weight::Bold,

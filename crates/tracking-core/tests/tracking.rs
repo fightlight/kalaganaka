@@ -2,6 +2,34 @@ use chrono::{DateTime, Duration, Utc};
 use tracking_core::{ActiveSession, Snapshot, Task, TimeFrame, Tracker, TrackingError, statistics};
 use uuid::Uuid;
 
+#[test]
+fn active_metadata_moves_to_completed_frame_and_tags_remain_available() {
+    use tracking_core::{FrameMetadata, FrameSelection};
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start = time("2026-11-02T09:00:00Z");
+    tracker.start(task, start).unwrap();
+    let metadata = FrameMetadata {
+        tags: vec!["dev".into(), "build".into()],
+        description: "First line\nSecond line".into(),
+    };
+    tracker
+        .set_metadata(FrameSelection::Active(task, start), metadata.clone())
+        .unwrap();
+    tracker.pause(start + Duration::minutes(10)).unwrap();
+    let snapshot = tracker.into_snapshot();
+    assert_eq!(snapshot.frames[0].metadata, metadata);
+    assert_eq!(snapshot.tags, vec!["dev", "build"]);
+    let mut tracker = Tracker::new(snapshot);
+    assert!(matches!(
+        tracker.set_metadata(
+            FrameSelection::Active(task, start),
+            FrameMetadata::default()
+        ),
+        Err(TrackingError::UnknownFrame)
+    ));
+}
+
 fn time(value: &str) -> DateTime<Utc> {
     value.parse().expect("valid test timestamp")
 }
@@ -53,7 +81,8 @@ fn pause_records_only_running_intervals_and_restart_creates_a_new_frame() {
         snapshot.active,
         Some(ActiveSession {
             task_id,
-            started_at: start
+            started_at: start,
+            metadata: Default::default(),
         })
     );
 
@@ -124,7 +153,8 @@ fn selecting_the_running_task_preserves_its_original_start() {
         snapshot.active,
         Some(ActiveSession {
             task_id,
-            started_at: start
+            started_at: start,
+            metadata: Default::default(),
         })
     );
 }
@@ -156,7 +186,8 @@ fn invalid_task_input_does_not_change_the_running_session() {
         snapshot.active,
         Some(ActiveSession {
             task_id,
-            started_at: start
+            started_at: start,
+            metadata: Default::default(),
         })
     );
 }
@@ -183,7 +214,8 @@ fn a_backwards_clock_does_not_close_or_switch_the_running_session() {
         snapshot.active,
         Some(ActiveSession {
             task_id,
-            started_at: start
+            started_at: start,
+            metadata: Default::default(),
         })
     );
 }
@@ -209,6 +241,7 @@ fn statistics_clip_midnight_crossings_and_exclude_outside_or_running_time() {
     snapshot.active = Some(ActiveSession {
         task_id,
         started_at: start,
+        metadata: Default::default(),
     });
     let totals = statistics::totals(&snapshot, start, end);
     assert_eq!(totals.len(), 1);
@@ -264,6 +297,7 @@ fn statistics_group_by_task_identity_and_sum_separate_frames() {
         task_id,
         started_at: start + Duration::minutes(from),
         ended_at: start + Duration::minutes(to),
+        metadata: Default::default(),
     };
     let snapshot = Snapshot {
         tasks: vec![first.clone(), second.clone()],
@@ -273,6 +307,7 @@ fn statistics_group_by_task_identity_and_sum_separate_frames() {
             frame(first.id, 25, 45),
         ],
         active: None,
+        tags: Vec::new(),
     };
     let totals = statistics::totals(&snapshot, start, start + Duration::days(1));
     assert_eq!(totals.len(), 2);

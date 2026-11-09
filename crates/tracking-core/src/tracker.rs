@@ -1,13 +1,14 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::{ActiveSession, FrameRef, FrameSelection, Task, TimeFrame};
+use crate::{ActiveSession, FrameMetadata, FrameRef, FrameSelection, Task, TimeFrame};
 
 #[derive(Debug, Clone, Default)]
 pub struct Snapshot {
     pub tasks: Vec<Task>,
     pub frames: Vec<TimeFrame>,
     pub active: Option<ActiveSession>,
+    pub tags: Vec<String>,
 }
 
 impl Snapshot {
@@ -58,6 +59,45 @@ impl Tracker {
 
     pub fn into_snapshot(self) -> Snapshot {
         self.snapshot
+    }
+
+    pub fn set_metadata(
+        &mut self,
+        selection: FrameSelection,
+        metadata: FrameMetadata,
+    ) -> Result<(), TrackingError> {
+        let current = match selection {
+            FrameSelection::Completed(id) => {
+                &mut self
+                    .snapshot
+                    .frames
+                    .iter_mut()
+                    .find(|frame| frame.id == id)
+                    .ok_or(TrackingError::UnknownFrame)?
+                    .metadata
+            }
+            FrameSelection::Active(task, started) => {
+                &mut self
+                    .snapshot
+                    .active
+                    .as_mut()
+                    .filter(|active| active.task_id == task && active.started_at == started)
+                    .ok_or(TrackingError::UnknownFrame)?
+                    .metadata
+            }
+        };
+        *current = metadata;
+        for tag in &current.tags {
+            if !self
+                .snapshot
+                .tags
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(tag))
+            {
+                self.snapshot.tags.push(tag.clone());
+            }
+        }
+        Ok(())
     }
 
     pub fn add_task(&mut self, name: &str) -> Result<Uuid, TrackingError> {
@@ -195,6 +235,7 @@ impl Tracker {
             task_id,
             started_at: start,
             ended_at: end,
+            metadata: FrameMetadata::default(),
         });
         Ok(())
     }
@@ -215,6 +256,7 @@ impl Tracker {
         self.snapshot.active = Some(ActiveSession {
             task_id,
             started_at: now,
+            metadata: FrameMetadata::default(),
         });
         Ok(())
     }
@@ -232,6 +274,7 @@ impl Tracker {
                 task_id: active.task_id,
                 started_at: active.started_at,
                 ended_at: now,
+                metadata: active.metadata.clone(),
             });
         }
         self.snapshot.active = None;

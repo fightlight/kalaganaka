@@ -14,9 +14,16 @@ to cancel.
 
 Click a calendar frame to view its task and elapsed time. Use the pencil beside
 Start or End to edit the local time; Enter or the checkmark saves, Tab switches
-between hours and minutes, and Escape cancels. Running frames can have their
+between hours and minutes, and Escape or a click outside cancels. Running frames can have their
 start edited. Edits retain the existing date and seconds and cannot overlap
 another frame. Invalid or ambiguous local times are rejected.
+
+Selected frames can have tags and a description, including while a session is
+running. Use the plus after the tags to search existing tags or add a new one;
+use the arrow keys and Enter or click a suggestion. Remove a tag with its ×
+button. Use the pencil beside Description to edit it and the checkmark to save.
+Escape or clicking outside cancels an unfinished edit. Tags remain available
+as suggestions after they are removed from a frame.
 
 Use the plus beside Time Frame to add a completed frame. Choose a date and task,
 then enter the local start and end times. Open the task selector to search; use

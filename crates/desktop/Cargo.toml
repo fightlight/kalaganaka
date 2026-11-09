@@ -8,7 +8,7 @@ license.workspace = true
 tracking-core = { path = "../tracking-core" }
 chrono.workspace = true
 uuid.workspace = true
-iced.workspace = true
+iced = { workspace = true, features = ["advanced"] }
 mundy.workspace = true
 rusqlite.workspace = true
 directories.workspace = true

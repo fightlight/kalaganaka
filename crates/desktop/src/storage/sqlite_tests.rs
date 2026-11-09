@@ -3,7 +3,76 @@ use chrono::Duration;
 use std::path::PathBuf;
 use tracking_core::Tracker;
 
+#[test]
+fn metadata_and_tag_catalog_survive_reopening_and_pause() {
+    use tracking_core::FrameSelection;
+    let database = TestDatabase::new();
+    let mut tracker = Tracker::new(Snapshot::default());
+    let task = tracker.add_task("Work").unwrap();
+    let start: DateTime<Utc> = "2026-11-02T09:00:00Z".parse().unwrap();
+    tracker.start(task, start).unwrap();
+    let metadata = FrameMetadata {
+        tags: vec!["dev".into(), "build".into()],
+        description: "First\nSecond".into(),
+    };
+    tracker
+        .set_metadata(FrameSelection::Active(task, start), metadata.clone())
+        .unwrap();
+    let mut repository = SqliteRepository::open(&database.path()).unwrap();
+    repository.save(&tracker.into_snapshot()).unwrap();
+    drop(repository);
+    let mut repository = SqliteRepository::open(&database.path()).unwrap();
+    let snapshot = repository.load().unwrap();
+    assert_eq!(snapshot.active.as_ref().unwrap().metadata, metadata);
+    assert_eq!(snapshot.tags, vec!["dev", "build"]);
+    let mut tracker = Tracker::new(snapshot);
+    tracker.pause(start + Duration::minutes(10)).unwrap();
+    repository.save(&tracker.into_snapshot()).unwrap();
+    drop(repository);
+    let reopened = SqliteRepository::open(&database.path())
+        .unwrap()
+        .load()
+        .unwrap();
+    assert!(reopened.active.is_none());
+    assert_eq!(reopened.frames[0].metadata, metadata);
+    assert_eq!(reopened.tags, vec!["dev", "build"]);
+}
+
 struct TestDatabase(PathBuf);
+
+#[test]
+fn metadata_migration_preserves_existing_frames_and_active_session() {
+    let database = TestDatabase::new();
+    let connection = Connection::open(database.path()).unwrap();
+    for migration in [
+        include_str!("../../migrations/001_initial.sql"),
+        include_str!("../../migrations/002_settings.sql"),
+        include_str!("../../migrations/003_task_limit.sql"),
+        include_str!("../../migrations/004_remove_task_limit_constraint.sql"),
+    ] {
+        connection.execute_batch(migration).unwrap();
+    }
+    let task = Uuid::new_v4().to_string();
+    let frame = Uuid::new_v4().to_string();
+    connection
+        .execute(
+            "INSERT INTO tasks (id, name, colour) VALUES (?1, 'Work', 1)",
+            [&task],
+        )
+        .unwrap();
+    connection.execute("INSERT INTO time_frames (id, task_id, started_at, ended_at) VALUES (?1, ?2, '2026-11-02T09:00:00Z', '2026-11-02T10:00:00Z')", params![frame, task]).unwrap();
+    connection.execute("INSERT INTO active_session (singleton, task_id, started_at) VALUES (1, ?1, '2026-11-02T11:00:00Z')", [&task]).unwrap();
+    drop(connection);
+    let snapshot = SqliteRepository::open(&database.path())
+        .unwrap()
+        .load()
+        .unwrap();
+    assert_eq!(snapshot.tasks.len(), 1);
+    assert_eq!(snapshot.frames.len(), 1);
+    assert_eq!(snapshot.frames[0].metadata, FrameMetadata::default());
+    assert_eq!(snapshot.active.unwrap().metadata, FrameMetadata::default());
+    assert!(snapshot.tags.is_empty());
+}
 
 impl TestDatabase {
     fn new() -> Self {
@@ -81,6 +150,7 @@ fn a_failed_save_rolls_back_new_records_and_preserves_the_previous_active_sessio
     invalid.active = Some(ActiveSession {
         task_id: Uuid::new_v4(),
         started_at: start,
+        metadata: Default::default(),
     });
     assert!(repository.save(&invalid).is_err());
 

@@ -7,12 +7,20 @@ pub struct TimeFrame {
     pub task_id: Uuid,
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
+    pub metadata: FrameMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveSession {
     pub task_id: Uuid,
     pub started_at: DateTime<Utc>,
+    pub metadata: FrameMetadata,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FrameMetadata {
+    pub tags: Vec<String>,
+    pub description: String,
 }
 
 /// Identifies either a completed frame or the active session as observed by the UI.
