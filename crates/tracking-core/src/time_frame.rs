@@ -14,3 +14,15 @@ pub struct ActiveSession {
     pub task_id: Uuid,
     pub started_at: DateTime<Utc>,
 }
+
+/// Identifies either a completed frame or the active session as observed by the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameSelection {
+    Completed(Uuid),
+    Active(Uuid, DateTime<Utc>),
+}
+
+pub enum FrameRef<'a> {
+    Completed(&'a TimeFrame),
+    Active(&'a ActiveSession),
+}

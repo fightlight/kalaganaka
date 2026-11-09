@@ -5,5 +5,5 @@ pub mod time_frame;
 pub mod tracker;
 
 pub use task::Task;
-pub use time_frame::{ActiveSession, TimeFrame};
+pub use time_frame::{ActiveSession, FrameRef, FrameSelection, TimeFrame};
 pub use tracker::{Snapshot, Tracker, TrackingError};

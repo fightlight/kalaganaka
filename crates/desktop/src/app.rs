@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
 use iced::{Element, Subscription, Task, window};
+pub use tracking_core::FrameSelection;
 use tracking_core::Snapshot;
 
 use crate::{
@@ -77,12 +78,6 @@ pub enum Message {
 pub enum ViewMode {
     Day,
     Week,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrameSelection {
-    Completed(uuid::Uuid),
-    Active(uuid::Uuid, DateTime<Utc>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -965,19 +960,13 @@ impl App {
     }
 
     pub fn frame_details(&self) -> Option<(uuid::Uuid, DateTime<Utc>, Option<DateTime<Utc>>)> {
-        match self.selected_frame? {
-            FrameSelection::Completed(id) => self
-                .snapshot
-                .frames
-                .iter()
-                .find(|frame| frame.id == id)
-                .map(|frame| (frame.task_id, frame.started_at, Some(frame.ended_at))),
-            FrameSelection::Active(task, started) => self
-                .snapshot
-                .active
-                .as_ref()
-                .filter(|active| active.task_id == task && active.started_at == started)
-                .map(|active| (active.task_id, active.started_at, None)),
+        match self.snapshot.frame(self.selected_frame?)? {
+            tracking_core::FrameRef::Completed(frame) => {
+                Some((frame.task_id, frame.started_at, Some(frame.ended_at)))
+            }
+            tracking_core::FrameRef::Active(active) => {
+                Some((active.task_id, active.started_at, None))
+            }
         }
     }
 

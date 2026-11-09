@@ -1,13 +1,30 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::{ActiveSession, Task, TimeFrame};
+use crate::{ActiveSession, FrameRef, FrameSelection, Task, TimeFrame};
 
 #[derive(Debug, Clone, Default)]
 pub struct Snapshot {
     pub tasks: Vec<Task>,
     pub frames: Vec<TimeFrame>,
     pub active: Option<ActiveSession>,
+}
+
+impl Snapshot {
+    pub fn frame(&self, selection: FrameSelection) -> Option<FrameRef<'_>> {
+        match selection {
+            FrameSelection::Completed(id) => self
+                .frames
+                .iter()
+                .find(|frame| frame.id == id)
+                .map(FrameRef::Completed),
+            FrameSelection::Active(task, started) => self
+                .active
+                .as_ref()
+                .filter(|active| active.task_id == task && active.started_at == started)
+                .map(FrameRef::Active),
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
