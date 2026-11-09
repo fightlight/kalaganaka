@@ -3,6 +3,19 @@
 Generated from Git commits using git-cliff. Do not edit entries by hand.
 Unreleased entries include committed changes only.
 
+## [v0.3.0](https://github.com/fightlight/kalaganaka/releases/tag/v0.3.0) - 2026-11-09
+
+### Features
+
+- **frames:** Add tags and descriptions ([08c0562](https://github.com/fightlight/kalaganaka/commit/08c05620404cacc18acd85991d2953c595cbe5fe))
+
+### Bug fixes
+
+- **icon:** Add rounded background ([f83d4f6](https://github.com/fightlight/kalaganaka/commit/f83d4f6dc282782b2c66f557b24b2df21be54624))
+
+### Maintenance
+
+- Share frame selection lookup ([0ee48ae](https://github.com/fightlight/kalaganaka/commit/0ee48ae01b98b9e9d376b4b012aaa87879ff73c4))
 ## [v0.2.0](https://github.com/fightlight/kalaganaka/releases/tag/v0.2.0) - 2026-11-07
 
 ### Features
@@ -27,6 +40,7 @@ Unreleased entries include committed changes only.
 - **tasks:** Show newest tasks in creation order ([be9e63b](https://github.com/fightlight/kalaganaka/commit/be9e63b719020ca35e9e47da73c19dda310c3ad0))
 - **tasks:** Select recently used tasks ([ba57a75](https://github.com/fightlight/kalaganaka/commit/ba57a751685cfe2d99d301f1893b2ce47eedb6c8))
 - **desktop:** Associate windows with app icon ([058da5d](https://github.com/fightlight/kalaganaka/commit/058da5d0c7548c32cd87b487a8d2478b3efe2214))
+- **release:** Use runner context in steps ([5f07c28](https://github.com/fightlight/kalaganaka/commit/5f07c28298b94f534dfebaf62bc88f5867b4c140))
 
 ### Documentation
 
@@ -40,8 +54,12 @@ Unreleased entries include committed changes only.
 - **release:** Publish notes for version tags ([0011f65](https://github.com/fightlight/kalaganaka/commit/0011f65070f062482938f1f8234ce94894183b5f))
 - **ui:** Round start and pause button ([127fa6f](https://github.com/fightlight/kalaganaka/commit/127fa6f6ca98beb43c952631fdfbc0de24dbfc11))
 - **ui:** Move status below calendar ([f681e3a](https://github.com/fightlight/kalaganaka/commit/f681e3afb0b38b8519bb64043c508febf428f1f7))
+- **release:** Prepare v0.2.0 ([27f85e2](https://github.com/fightlight/kalaganaka/commit/27f85e2ee479b7a0550bc4ab3c13f8f36a6a3396))
 
 ### Other changes
 
 - Initial commit ([f1810e5](https://github.com/fightlight/kalaganaka/commit/f1810e505af805576e742f2d0ee4118c653d2a27))
 - Initial version ([26c78cc](https://github.com/fightlight/kalaganaka/commit/26c78cc7667982872ebd4b50c4c5f9aa5bca2c36))
+- Merge pull request #1 from fightlight/release/v0.2.0
+
+Release/v0.2.0 ([b09cd60](https://github.com/fightlight/kalaganaka/commit/b09cd60c8d1cdff58f4b7d7ef6c8d1cb7c8d8192))
